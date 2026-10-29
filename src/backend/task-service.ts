@@ -23,26 +23,10 @@ function generateRandomSeed(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
-// Resolve API key from environment only
-function resolveApiKey(): string {
-  return process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || '';
-}
-
 /** Generate a new case study */
 export async function generateCaseStudyService(req: GenerateRequest): Promise<CaseStudy> {
-  console.log('generateCaseStudyService called with req:', req);
-
   const seed = req.seed && req.seed.trim() !== '' ? req.seed.trim() : generateRandomSeed();
-  console.log('Using seed:', seed);
-
-  const apiKey = resolveApiKey();
-
-  // Ensure an API key is present
-  if (!apiKey || apiKey.trim() === '') {
-    throw new Error(
-      'API Key tidak ditemukan. Pastikan environment variable GROQ_API_KEY sudah diset di Vercel.'
-    );
-  }
+  console.log('[task-service] generateCaseStudyService seed:', seed);
 
   const prompt = compileGeneratePrompt(req, seed);
   const maxRetries = 2;
@@ -50,8 +34,8 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      // No apiKey passed here — ai-client resolves from env automatically
       const rawResponse = await callGroqChat({
-        apiKey,
         systemPrompt:
           'You are an expert Indonesian administrative business analyst and Excel educator. You output only valid JSON matching the exact schema requested.',
         userPrompt: prompt,
@@ -85,13 +69,14 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
     } catch (err) {
       lastError = err;
       const errMsg = (err as Error).message || '';
-      if (errMsg.includes('401') || errMsg.includes('API Key tidak valid')) {
+      console.error(`[task-service] Attempt ${attempt + 1} failed:`, errMsg);
+      // Don't retry on auth errors
+      if (errMsg.includes('401') || errMsg.includes('API Key tidak valid') || errMsg.includes('tidak ditemukan')) {
         throw err;
       }
     }
   }
 
-  // All retries exhausted
   throw new Error(
     `Gagal men-generate studi kasus dari AI: ${(lastError as Error)?.message || 'Format respons tidak sesuai'}`
   );
@@ -100,17 +85,10 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
 /** Regenerate a single task within an existing case study */
 export async function regenerateTaskService(req: RegenerateTaskRequest): Promise<CaseStudy> {
   const { caseStudy, taskNo } = req;
-  const apiKey = resolveApiKey();
 
   const oldTask = caseStudy.tasks.find((t) => t.no === taskNo);
   if (!oldTask) {
     throw new Error(`Tugas nomor ${taskNo} tidak ditemukan pada studi kasus ini.`);
-  }
-
-  if (!apiKey || apiKey.trim() === '') {
-    throw new Error(
-      'API Key tidak ditemukan. Pastikan environment variable GROQ_API_KEY sudah diset di Vercel.'
-    );
   }
 
   const prompt = compileRegenerateTaskPrompt({
@@ -126,8 +104,8 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     oldInstruction: oldTask.instruction,
   });
 
+  // No apiKey passed here — ai-client resolves from env automatically
   const rawResponse = await callGroqChat({
-    apiKey,
     systemPrompt: 'You regenerate a single Excel task. Output strictly valid JSON.',
     userPrompt: prompt,
     temperature: 0.75,
@@ -142,14 +120,14 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     throw new Error('Format tugas baru dari AI tidak sesuai.');
   }
 
-  // Replace the targeted task
   const finalTasks = caseStudy.tasks.map((t) => (t.no === taskNo ? { ...newTask, no: taskNo } : t));
 
-  // Replace answer key if AI supplied one
   let finalAnswerKey = caseStudy.answerKey;
   if (newAnswer && newAnswer.formula) {
     finalAnswerKey = caseStudy.answerKey.map((a) =>
-      a.task === taskNo ? { task: taskNo, formula: newAnswer.formula, explanation: newAnswer.explanation || '' } : a
+      a.task === taskNo
+        ? { task: taskNo, formula: newAnswer.formula, explanation: newAnswer.explanation || '' }
+        : a
     );
   }
 

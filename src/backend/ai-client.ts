@@ -8,30 +8,40 @@ export interface AICompletionOptions {
 }
 
 export async function callChatAI(options: AICompletionOptions): Promise<string> {
+  // Resolve API key: prefer passed-in key, then env vars
   const apiKey =
     options.apiKey ||
-    process.env.OPENAI_API_KEY ||
-    process.env.GROQ_API_KEY;
+    process.env.GROQ_API_KEY ||
+    process.env.OPENAI_API_KEY;
+
+  console.log('[ai-client] Resolving API key...');
+  console.log('[ai-client] Has GROQ_API_KEY env:', Boolean(process.env.GROQ_API_KEY));
+  console.log('[ai-client] Has OPENAI_API_KEY env:', Boolean(process.env.OPENAI_API_KEY));
+  console.log('[ai-client] Final key prefix:', apiKey ? apiKey.slice(0, 6) + '...' : 'NONE');
 
   if (!apiKey || apiKey.trim() === '') {
     throw new Error(
-      'OPENAI_API_KEY tidak ditemukan. Harap masukkan API Key OpenAI Anda di tombol "API Key" navbar (Mode BYOK) atau atur Environment Variable di Vercel.'
+      'API Key tidak ditemukan. Pastikan environment variable GROQ_API_KEY sudah diset di Vercel dan deployment sudah diperbarui.'
     );
   }
 
-  const cleanKey = apiKey.replace(/^["']|["']$/g, '').trim();
+  const cleanKey = apiKey.replace(/^[\"']|[\"']$/g, '').trim();
 
-  // If user provides a Groq key (starts with 'gsk_'), route to Groq, otherwise default to OpenAI ChatGPT
+  // Detect provider from key prefix
   const isGroqKey = cleanKey.startsWith('gsk_');
 
   const endpoint = isGroqKey
     ? 'https://api.groq.com/openai/v1/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
 
-  const defaultModel = isGroqKey ? 'openai/gpt-oss-20b' : 'gpt-4o-mini';
+  // Use stable Groq models
+  const defaultModel = isGroqKey ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini';
   const model = options.model || defaultModel;
 
-  const messages = [];
+  console.log('[ai-client] Using endpoint:', endpoint);
+  console.log('[ai-client] Using model:', model);
+
+  const messages: { role: string; content: string }[] = [];
   if (options.systemPrompt) {
     messages.push({ role: 'system', content: options.systemPrompt });
   }
@@ -52,8 +62,9 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     }),
   });
 
-  // If model error on Groq, fallback to qwen/qwen3.8-27b
-  if (!response.ok && isGroqKey && model === 'openai/gpt-oss-20b') {
+  // If llama-3.3-70b fails, fallback to mixtral
+  if (!response.ok && isGroqKey && model === 'llama-3.3-70b-versatile') {
+    console.warn('[ai-client] Primary model failed, falling back to mixtral-8x7b-32768');
     response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -61,7 +72,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
         Authorization: `Bearer ${cleanKey}`,
       },
       body: JSON.stringify({
-        model: 'qwen/qwen3.8-27b',
+        model: 'mixtral-8x7b-32768',
         messages,
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 3500,
@@ -72,6 +83,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
 
   if (!response.ok) {
     const errorBody = await response.text();
+    console.error('[ai-client] API error:', response.status, errorBody);
     if (response.status === 429) {
       throw new Error(
         'Limit kuota API tercapai (Rate Limit 429). Tunggu beberapa saat sebelum mencoba lagi.'
@@ -79,7 +91,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     }
     if (response.status === 401) {
       throw new Error(
-        'API Key tidak valid (401 Unauthorized). Periksa kembali API Key Anda di menu Pengaturan.'
+        'API Key tidak valid (401 Unauthorized). Periksa kembali API Key di environment variable Vercel.'
       );
     }
     let parsedMsg = errorBody;
@@ -93,7 +105,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
   const json = await response.json();
   const content = json.choices?.[0]?.message?.content;
   if (!content) {
-    throw new Error('ChatGPT tidak mengembalikan konten JSON yang valid.');
+    throw new Error('AI tidak mengembalikan konten JSON yang valid.');
   }
 
   return content;
