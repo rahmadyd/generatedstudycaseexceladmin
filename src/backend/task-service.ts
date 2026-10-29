@@ -4,6 +4,19 @@ import { callGroqChat } from './groq';
 import { validateAndSanitizeCaseStudy } from './validator';
 import { FALLBACK_CASES } from './fallbacks';
 
+function cleanJsonString(str: string): string {
+  let cleaned = str.trim();
+  if (cleaned.startsWith('```json')) {
+    cleaned = cleaned.substring(7);
+  } else if (cleaned.startsWith('```')) {
+    cleaned = cleaned.substring(3);
+  }
+  if (cleaned.endsWith('```')) {
+    cleaned = cleaned.substring(0, cleaned.length - 3);
+  }
+  return cleaned.trim();
+}
+
 function generateRandomSeed(): string {
   return Math.random().toString(36).substring(2, 10);
 }
@@ -41,7 +54,8 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
 
       let parsed: unknown;
       try {
-        parsed = JSON.parse(rawResponse);
+        const cleaned = cleanJsonString(rawResponse);
+        parsed = JSON.parse(cleaned);
       } catch (e) {
         throw new Error(`Failed to parse AI JSON response: ${(e as Error).message}`);
       }
@@ -134,7 +148,8 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     temperature: 0.75,
   });
 
-  const parsed = JSON.parse(rawResponse);
+  const cleaned = cleanJsonString(rawResponse);
+  const parsed = JSON.parse(cleaned);
   const newTask: Task = parsed.task;
   const newAnswer = parsed.answerKey;
 

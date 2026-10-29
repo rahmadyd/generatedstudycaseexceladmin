@@ -19,7 +19,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     );
   }
 
-  const cleanKey = apiKey.trim();
+  const cleanKey = apiKey.replace(/^["']|["']$/g, '').trim();
 
   // If user provides a Groq key (starts with 'gsk_'), route to Groq, otherwise default to OpenAI ChatGPT
   const isGroqKey = cleanKey.startsWith('gsk_');
@@ -79,10 +79,15 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     }
     if (response.status === 401) {
       throw new Error(
-        'API Key tidak valid (401 Unauthorized). Periksa kembali OpenAI API Key Anda di menu Pengaturan.'
+        'API Key tidak valid (401 Unauthorized). Periksa kembali API Key Anda di menu Pengaturan.'
       );
     }
-    throw new Error(`OpenAI API Error (${response.status}): ${errorBody}`);
+    let parsedMsg = errorBody;
+    try {
+      const errObj = JSON.parse(errorBody);
+      parsedMsg = errObj.error?.message || errorBody;
+    } catch {}
+    throw new Error(`AI Provider Error (${response.status}): ${parsedMsg}`);
   }
 
   const json = await response.json();

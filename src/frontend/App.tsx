@@ -140,7 +140,13 @@ export default function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(customApiKey ? { 'x-groq-api-key': customApiKey } : {}),
+          ...(customApiKey
+            ? {
+                'x-groq-api-key': customApiKey,
+                'x-openai-api-key': customApiKey,
+                'x-api-key': customApiKey,
+              }
+            : {}),
         },
         body: JSON.stringify({
           ...req,
@@ -182,7 +188,13 @@ export default function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(customApiKey ? { 'x-groq-api-key': customApiKey } : {}),
+          ...(customApiKey
+            ? {
+                'x-groq-api-key': customApiKey,
+                'x-openai-api-key': customApiKey,
+                'x-api-key': customApiKey,
+              }
+            : {}),
         },
         body: JSON.stringify({
           caseStudy,
