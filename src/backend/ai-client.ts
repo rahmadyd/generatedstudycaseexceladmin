@@ -34,6 +34,16 @@ function resolveApiKey(explicitApiKey?: string): { key: string; source: string }
   return null;
 }
 
+function getGroqPrimaryModel(): string {
+  const configured = process.env.GROQ_MODEL?.trim();
+  return configured && configured.length > 0 ? configured : 'llama-3.3-70b-versatile';
+}
+
+function getGroqFallbackModel(): string {
+  const configured = process.env.GROQ_FALLBACK_MODEL?.trim();
+  return configured && configured.length > 0 ? configured : 'llama-3.1-8b-instant';
+}
+
 export async function callChatAI(options: AICompletionOptions): Promise<string> {
   const resolved = resolveApiKey(options.apiKey);
   if (!resolved) {
@@ -51,8 +61,8 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     ? 'https://api.groq.com/openai/v1/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
 
-  // Model default stabil
-  const defaultModel = isGroqKey ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini';
+  const defaultModel = isGroqKey ? getGroqPrimaryModel() : 'gpt-4o-mini';
+  const fallbackModel = isGroqKey ? getGroqFallbackModel() : 'gpt-4o-mini';
   const model = options.model || defaultModel;
 
   const messages: { role: string; content: string }[] = [];
@@ -79,15 +89,15 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     body: buildBody(model),
   });
 
-  // Fallback ke mixtral jika primary model Groq gagal
-  if (!response.ok && isGroqKey && model === 'llama-3.3-70b-versatile') {
+  // Fallback to a still-supported Groq model if the main model fails.
+  if (!response.ok && isGroqKey && model === defaultModel && fallbackModel !== defaultModel) {
     response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${cleanKey}`,
       },
-      body: buildBody('mixtral-8x7b-32768'),
+      body: buildBody(fallbackModel),
     });
   }
 

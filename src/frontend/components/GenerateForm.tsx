@@ -8,7 +8,7 @@ import { ADMIN_ROLES, LEVEL_CONFIG } from '@/shared/constants';
 interface GenerateFormProps {
   onGenerate: (req: GenerateRequest) => Promise<void>;
   isLoading: boolean;
-  initialLevel?: Level;
+  initialLevel?: Level | null;
   initialRole?: string;
   initialExcelVersion?: ExcelVersion;
 }
@@ -16,11 +16,11 @@ interface GenerateFormProps {
 export const GenerateForm: React.FC<GenerateFormProps> = ({
   onGenerate,
   isLoading,
-  initialLevel = 'middle',
+  initialLevel = null,
   initialRole = 'Penjualan',
   initialExcelVersion = 'Microsoft 365',
 }) => {
-  const [level, setLevel] = useState<Level>(initialLevel);
+  const [level, setLevel] = useState<Level | null>(initialLevel ?? null);
   const [role, setRole] = useState<string>(initialRole);
   const [excelVersion, setExcelVersion] = useState<ExcelVersion>(initialExcelVersion);
   const [taskCount, setTaskCount] = useState<number>(5);
@@ -30,7 +30,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading || cooldown > 0) return;
+    if (isLoading || cooldown > 0 || !level) return;
 
     await onGenerate({
       level,
@@ -53,7 +53,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
     }, 1000);
   };
 
-  const currentLevelConfig = LEVEL_CONFIG[level];
+  const currentLevelConfig = level ? LEVEL_CONFIG[level] : null;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-200 dark:border-gray-700">
@@ -107,19 +107,26 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
               );
             })}
           </div>
-          {/* Level hint pill */}
-          <div className="mt-2 text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 p-2.5 rounded-lg border border-gray-100 dark:border-gray-700/50 flex items-start space-x-2">
-            <Info className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold text-gray-800 dark:text-gray-100">Fokus Rumus: </span>
-              {currentLevelConfig.recommended.join(', ')}.
-              {currentLevelConfig.forbidden.length > 0 && (
-                <span className="text-red-600 dark:text-red-400 ml-1">
-                  (Dilarang: {currentLevelConfig.forbidden.join(', ')})
-                </span>
-              )}
+
+          {!level ? (
+            <div className="mt-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800 flex items-start space-x-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>Pilih tingkat kesulitan dulu sebelum generate.</span>
             </div>
-          </div>
+          ) : (
+            <div className="mt-2 text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 p-2.5 rounded-lg border border-gray-100 dark:border-gray-700/50 flex items-start space-x-2">
+              <Info className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold text-gray-800 dark:text-gray-100">Fokus Rumus: </span>
+                {currentLevelConfig?.recommended.join(', ')}.
+                {currentLevelConfig && currentLevelConfig.forbidden.length > 0 && (
+                  <span className="text-red-600 dark:text-red-400 ml-1">
+                    (Dilarang: {currentLevelConfig.forbidden.join(', ')})
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Row 2: Role & Excel Version */}
@@ -212,9 +219,9 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
         <div>
           <button
             type="submit"
-            disabled={isLoading || cooldown > 0}
+            disabled={isLoading || cooldown > 0 || !level}
             className={`w-full py-3.5 px-6 rounded-xl font-bold text-white shadow-lg transition flex items-center justify-center space-x-2 ${
-              isLoading || cooldown > 0
+              isLoading || cooldown > 0 || !level
                 ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed'
                 : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] shadow-emerald-600/30'
             }`}
@@ -226,6 +233,8 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
               </>
             ) : cooldown > 0 ? (
               <span>Tunggu {cooldown} detik sebelum generate ulang...</span>
+            ) : !level ? (
+              <span>Pilih Tingkat Kesulitan Terlebih Dahulu</span>
             ) : (
               <>
                 <Sparkles className="w-5 h-5 text-emerald-200" />

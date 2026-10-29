@@ -5,6 +5,15 @@ export const metadata: Metadata = {
   title: 'Generator Studi Kasus Excel (Bidang Admin & Portofolio)',
   description:
     'Aplikasi web untuk latihan Excel bidang admin. Soal dibuat oleh AI (Groq), dataset dibangkitkan oleh kode (faker.js + seed), unduh XLSX/CSV dan PDF.',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon-32.png', type: 'image/png', sizes: '32x32' },
+      { url: '/icon-192.png', type: 'image/png', sizes: '192x192' },
+    ],
+    apple: '/apple-icon.png',
+    shortcut: '/icon.svg',
+  },
 };
 
 export default function RootLayout({
