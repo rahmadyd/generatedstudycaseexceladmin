@@ -1,9 +1,11 @@
+// Backend services for generating and regenerating case studies
 import { CaseStudy, GenerateRequest, RegenerateTaskRequest, Task } from '../shared/schema';
 import { compileGeneratePrompt, compileRegenerateTaskPrompt } from './prompts';
 import { callGroqChat } from './groq';
 import { validateAndSanitizeCaseStudy } from './validator';
 import { FALLBACK_CASES } from './fallbacks';
 
+// Utility to strip possible markdown fences from AI output
 function cleanJsonString(str: string): string {
   let cleaned = str.trim();
   if (cleaned.startsWith('```json')) {
@@ -17,22 +19,22 @@ function cleanJsonString(str: string): string {
   return cleaned.trim();
 }
 
+// Simple random seed generator
 function generateRandomSeed(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
+/** Generate a new case study */
 export async function generateCaseStudyService(req: GenerateRequest): Promise<CaseStudy> {
   console.log('generateCaseStudyService called with req:', req);
 
   const seed = req.seed && req.seed.trim() !== '' ? req.seed.trim() : generateRandomSeed();
   console.log('Using seed:', seed);
-  
+
   const apiKey = req.customApiKey || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
-  console.log('API Key resolved (first 5 chars):', apiKey ? apiKey.slice(0,5) + '...' : 'none');
+  console.log('API Key resolved (first 5 chars):', apiKey ? apiKey.slice(0, 5) + '...' : 'none');
 
-  
-
-  // If no API Key is configured on server or sent by client, ask user to provide one
+  // Ensure an API key is present
   if (!apiKey || apiKey.trim() === '') {
     throw new Error(
       'API Key belum terdeteksi. Silakan klik tombol "API Key" di kanan atas navbar dan masukkan Groq API Key Anda (gsk_...) agar AI dapat membuat studi kasus baru.'
@@ -61,7 +63,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         throw new Error(`Failed to parse AI JSON response: ${(e as Error).message}`);
       }
 
-      // Inject seed, level, role, excelVersion, createdAt if missing
+      // Ensure required fields are present
       if (typeof parsed === 'object' && parsed !== null) {
         (parsed as Record<string, unknown>).seed = seed;
         (parsed as Record<string, unknown>).level = req.level;
@@ -79,7 +81,6 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
       throw new Error(`Validation failed on attempt ${attempt + 1}: ${validation.errors.join('; ')}`);
     } catch (err) {
       lastError = err;
-      // If it's auth error (401), don't retry, fail immediately
       const errMsg = (err as Error).message || '';
       if (errMsg.includes('401') || errMsg.includes('API Key tidak valid')) {
         throw err;
@@ -87,16 +88,17 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
     }
   }
 
-  // If all retries failed, throw descriptive error so user knows what went wrong
+  // All retries exhausted
   throw new Error(
     `Gagal men-generate studi kasus dari AI: ${(lastError as Error)?.message || 'Format respons tidak sesuai'}`
   );
 }
 
-  const apiKey = req.customApiKey || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
-  console.log('RegenerateTaskService API Key resolved (first 5 chars):', apiKey ? apiKey.slice(0,5) + '...' : 'none');
+/** Regenerate a single task within an existing case study */
+export async function regenerateTaskService(req: RegenerateTaskRequest): Promise<CaseStudy> {
   const { caseStudy, taskNo } = req;
-  
+  const apiKey = req.customApiKey || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
+  console.log('RegenerateTaskService API Key resolved (first 5 chars):', apiKey ? apiKey.slice(0, 5) + '...' : 'none');
 
   const oldTask = caseStudy.tasks.find((t) => t.no === taskNo);
   if (!oldTask) {
@@ -108,24 +110,12 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
       'API Key belum terdeteksi. Silakan klik tombol "API Key" di kanan atas navbar untuk memasukkan key Anda.'
     );
   }
-    // Generate an algorithmic variation for this task
-    const updatedTasks = caseStudy.tasks.map((t) => {
-      if (t.no === taskNo) {
-        return {
-          ...t,
-          instruction: `[Variasi Baru] ${t.instruction} - Tambahkan validasi batas nilai dan formatting sel.`,
-          hint: `${t.hint} (Periksa format angka/tampilan)`,
-          targetResult: `${t.targetResult} (Kalkulasi ulang)`,
-        };
-      }
-      return t;
-    });
 
-    return {
-      ...caseStudy,
-      tasks: updatedTasks,
-    };
-  }
+  // Fallback variation (currently disabled). Uncomment to use without AI.
+  // const updatedTasks = caseStudy.tasks.map((t) =>
+  //   t.no === taskNo ? { ...t, instruction: `[Variasi Baru] ${t.instruction} - Tambahkan validasi batas nilai dan formatting sel.`, hint: `${t.hint} (Periksa format angka/tampilan)`, targetResult: `${t.targetResult} (Kalkulasi ulang)` } : t
+  // );
+  // return { ...caseStudy, tasks: updatedTasks };
 
   const prompt = compileRegenerateTaskPrompt({
     title: caseStudy.title,
@@ -156,20 +146,20 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
     throw new Error('Format tugas baru dari AI tidak sesuai.');
   }
 
-  // Replace task
-  const updatedTasks = caseStudy.tasks.map((t) => (t.no === taskNo ? { ...newTask, no: taskNo } : t));
+  // Replace the targeted task
+  const finalTasks = caseStudy.tasks.map((t) => (t.no === taskNo ? { ...newTask, no: taskNo } : t));
 
-  // Replace answer key if returned
-  let updatedAnswerKey = caseStudy.answerKey;
+  // Replace answer key if AI supplied one
+  let finalAnswerKey = caseStudy.answerKey;
   if (newAnswer && newAnswer.formula) {
-    updatedAnswerKey = caseStudy.answerKey.map((a) =>
+    finalAnswerKey = caseStudy.answerKey.map((a) =>
       a.task === taskNo ? { task: taskNo, formula: newAnswer.formula, explanation: newAnswer.explanation || '' } : a
     );
   }
 
   return {
     ...caseStudy,
-    tasks: updatedTasks,
-    answerKey: updatedAnswerKey,
+    tasks: finalTasks,
+    answerKey: finalAnswerKey,
   };
 }
