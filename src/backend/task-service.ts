@@ -10,7 +10,7 @@ function generateRandomSeed(): string {
 
 export async function generateCaseStudyService(req: GenerateRequest): Promise<CaseStudy> {
   const seed = req.seed && req.seed.trim() !== '' ? req.seed.trim() : generateRandomSeed();
-  const apiKey = req.customApiKey || process.env.GROQ_API_KEY;
+  const apiKey = req.customApiKey || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
 
   // If no Groq API Key is configured on server or sent by client, use high-quality seeded fallback
   if (!apiKey || apiKey.trim() === '') {
@@ -87,7 +87,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
 
 export async function regenerateTaskService(req: RegenerateTaskRequest): Promise<CaseStudy> {
   const { caseStudy, taskNo } = req;
-  const apiKey = req.customApiKey || process.env.GROQ_API_KEY;
+  const apiKey = req.customApiKey || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
 
   const oldTask = caseStudy.tasks.find((t) => t.no === taskNo);
   if (!oldTask) {

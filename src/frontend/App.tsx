@@ -321,7 +321,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-6 text-center text-xs text-gray-500 dark:text-gray-400">
         <p>
-          Generator Studi Kasus Excel Admin &copy; 2026. Ditenagai oleh AI Llama-3.3-70B & Faker.js. Siap dideploy ke Vercel.
+          Generator Studi Kasus Excel Admin &copy; 2026. Ditenagai oleh ChatGPT (OpenAI) & Faker.js. Siap dideploy ke Vercel.
         </p>
       </footer>
 

@@ -52,10 +52,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                Pengaturan API Key (BYOK)
+                Pengaturan API Key AI
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Bring Your Own Key untuk Groq AI (Llama 3.3 70B)
+                Model: OpenAI ChatGPT (gpt-4o-mini)
               </p>
             </div>
           </div>
@@ -71,12 +71,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <form onSubmit={handleSave} className="space-y-4 my-5">
           <div>
             <label className="block text-xs font-semibold text-gray-800 dark:text-gray-200 mb-1.5">
-              Groq API Key
+              OpenAI API Key (ChatGPT)
             </label>
             <div className="relative">
               <input
                 type={showKey ? 'text' : 'password'}
-                placeholder="gsk_..."
+                placeholder="sk-proj-..."
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-mono focus:ring-2 focus:ring-emerald-500"
@@ -95,20 +95,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex items-start space-x-2">
               <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
               <span>
-                <strong>Aman & Privat:</strong> Key hanya disimpan di <code>localStorage</code> browser Anda dan tidak pernah disimpan di database publik.
+                <strong>Aman & Privat:</strong> Key disimpan di <code>localStorage</code> browser Anda atau diatur via environment variable <code>OPENAI_API_KEY</code> di Vercel.
               </span>
             </div>
             <div className="flex items-center space-x-1 pt-1 text-emerald-700 dark:text-emerald-400">
               <ExternalLink className="w-3.5 h-3.5" />
               <a
-                href="https://console.groq.com/keys"
+                href="https://platform.openai.com/api-keys"
                 target="_blank"
                 rel="noreferrer"
                 className="underline font-semibold"
               >
-                Dapatkan Groq API Key Gratis di console.groq.com
+                Dapatkan OpenAI API Key di platform.openai.com
               </a>
             </div>
+            <p className="text-[11px] text-gray-400 pt-1">
+              Catatan: Jika Anda memasukkan key Groq (awalan <code>gsk_</code>), sistem otomatis menggunakan Llama 3.3 70B.
+            </p>
           </div>
 
           {savedSuccess && (

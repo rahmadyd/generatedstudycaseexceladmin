@@ -1,6 +1,6 @@
 # Generator Studi Kasus Excel (Bidang Admin & Portofolio)
 
-Aplikasi web modern untuk latihan dan simulasi tugas Microsoft Excel bidang administrasi perkantoran. Soal studi kasus digenerate secara dinamis oleh AI (**Groq Llama-3.3-70B**), dataset realistis dibangkitkan secara deterministik oleh kode (**Faker.js + PRNG Seed**), dan hasilnya dapat diunduh langsung sebagai file **XLSX**, **CSV**, dan **PDF**.
+Aplikasi web modern untuk latihan dan simulasi tugas Microsoft Excel bidang administrasi perkantoran. Soal studi kasus digenerate secara dinamis oleh AI (**OpenAI ChatGPT gpt-4o-mini**), dataset realistis dibangkitkan secara deterministik oleh kode (**Faker.js + PRNG Seed**), dan hasilnya dapat diunduh langsung sebagai file **XLSX**, **CSV**, dan **PDF**.
 
 Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backend**, serta siap dideploy langsung ke **Vercel** dengan konfigurasi serverless.
 
@@ -131,11 +131,11 @@ generatedstudycaseexceladmin/
    npm install
    ```
 
-3. (Opsional) Salin file lingkungan dan isi Groq API Key:
+3. (Opsional) Salin file lingkungan dan isi API Key OpenAI (ChatGPT):
    ```bash
    cp .env.example .env.local
    ```
-   Isi `GROQ_API_KEY=gsk_...` di `.env.local` jika ingin menggunakan server proxy default. Jika tidak diisi, Anda tetap dapat memasukkan API Key langsung di UI (tombol "API Key" di navbar) atau menikmati studi kasus fallback offline secara langsung.
+   Isi `OPENAI_API_KEY=sk-...` di `.env.local` jika ingin menggunakan server proxy default. Jika tidak diisi, Anda tetap dapat memasukkan API Key langsung di UI (tombol "API Key" di navbar) atau menikmati studi kasus fallback offline secara langsung.
 
 4. Jalankan server pengembangan:
    ```bash
@@ -160,15 +160,15 @@ npm install -g vercel
 vercel
 ```
 Jika diminta environment variables, tambahkan:
-- Key: `GROQ_API_KEY`
-- Value: `<your_groq_api_key>` (opsional jika user menggunakan mode BYOK)
+- Key: `OPENAI_API_KEY`
+- Value: `<your_openai_api_key>` (opsional jika user menggunakan mode BYOK)
 
 ### Opsi 2: Menggunakan Git / GitHub Integration
 1. Push repositori ini ke GitHub / GitLab.
 2. Buka dashboard [Vercel](https://vercel.com/) dan klik **Add New Project**.
 3. Import repositori ini.
 4. Pada bagian **Environment Variables**, tambahkan:
-   - `GROQ_API_KEY`: Kunci API dari [Groq Console](https://console.groq.com/keys)
+   - `OPENAI_API_KEY`: Kunci API OpenAI dari [OpenAI Platform](https://platform.openai.com/api-keys)
 5. Klik **Deploy**. Aplikasi akan live dalam hitungan detik.
 
 ---
