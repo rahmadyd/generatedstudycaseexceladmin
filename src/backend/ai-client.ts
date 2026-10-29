@@ -7,20 +7,42 @@ export interface AICompletionOptions {
   model?: string;
 }
 
-export async function callChatAI(options: AICompletionOptions): Promise<string> {
-  // Resolve API key dari Vercel environment variable
-  const apiKey =
-    options.apiKey ||
-    process.env.GROQ_API_KEY ||
-    process.env.OPENAI_API_KEY;
+function normalizeApiKey(value?: string): string | null {
+  if (!value) return null;
+  const cleaned = value.replace(/^\s*["']|["']\s*$/g, '').trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
 
-  if (!apiKey || apiKey.trim() === '') {
+function resolveApiKey(explicitApiKey?: string): { key: string; source: string } | null {
+  const candidates: Array<{ value?: string; source: string }> = [
+    { value: explicitApiKey, source: 'request' },
+    { value: process.env.GROQ_API_KEY, source: 'GROQ_API_KEY' },
+    { value: process.env.OPENAI_API_KEY, source: 'OPENAI_API_KEY' },
+    { value: process.env.NEXT_PUBLIC_GROQ_API_KEY, source: 'NEXT_PUBLIC_GROQ_API_KEY' },
+    { value: process.env.NEXT_PUBLIC_OPENAI_API_KEY, source: 'NEXT_PUBLIC_OPENAI_API_KEY' },
+    { value: process.env.AI_API_KEY, source: 'AI_API_KEY' },
+    { value: process.env.OPENAI_KEY, source: 'OPENAI_KEY' },
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeApiKey(candidate.value);
+    if (normalized) {
+      return { key: normalized, source: candidate.source };
+    }
+  }
+
+  return null;
+}
+
+export async function callChatAI(options: AICompletionOptions): Promise<string> {
+  const resolved = resolveApiKey(options.apiKey);
+  if (!resolved) {
     throw new Error(
-      'API Key tidak ditemukan. Pastikan environment variable GROQ_API_KEY sudah diset di Vercel.'
+      'API Key tidak ditemukan. Pastikan environment variable GROQ_API_KEY atau OPENAI_API_KEY sudah diset di Vercel.'
     );
   }
 
-  const cleanKey = apiKey.replace(/^[\"']|[\"']$/g, '').trim();
+  const cleanKey = resolved.key;
 
   // Detect provider dari prefix key
   const isGroqKey = cleanKey.startsWith('gsk_');
@@ -78,7 +100,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     }
     if (response.status === 401) {
       throw new Error(
-        'API Key tidak valid (401). Periksa kembali nilai GROQ_API_KEY di Vercel.'
+        'API Key tidak valid (401). Periksa kembali nilai GROQ_API_KEY atau OPENAI_API_KEY di Vercel.'
       );
     }
     let parsedMsg = errorBody;
