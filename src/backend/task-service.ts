@@ -22,20 +22,21 @@ function generateRandomSeed(): string {
 }
 
 export async function generateCaseStudyService(req: GenerateRequest): Promise<CaseStudy> {
-  const seed = req.seed && req.seed.trim() !== '' ? req.seed.trim() : generateRandomSeed();
-  const apiKey = req.customApiKey || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
+  console.log('generateCaseStudyService called with req:', req);
 
-  // If no Groq API Key is configured on server or sent by client, use high-quality seeded fallback
+  const seed = req.seed && req.seed.trim() !== '' ? req.seed.trim() : generateRandomSeed();
+  console.log('Using seed:', seed);
+  
+  const apiKey = req.customApiKey || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
+  console.log('API Key resolved (first 5 chars):', apiKey ? apiKey.slice(0,5) + '...' : 'none');
+
+  
+
+  // If no API Key is configured on server or sent by client, ask user to provide one
   if (!apiKey || apiKey.trim() === '') {
-    const fallbackTemplate = FALLBACK_CASES[req.level] || FALLBACK_CASES.middle;
-    return {
-      ...fallbackTemplate,
-      id: `case-${seed}`,
-      seed,
-      role: req.role || fallbackTemplate.role,
-      excelVersion: req.excelVersion,
-      createdAt: new Date().toISOString(),
-    };
+    throw new Error(
+      'API Key belum terdeteksi. Silakan klik tombol "API Key" di kanan atas navbar dan masukkan Groq API Key Anda (gsk_...) agar AI dapat membuat studi kasus baru.'
+    );
   }
 
   const prompt = compileGeneratePrompt(req, seed);
@@ -86,22 +87,16 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
     }
   }
 
-  // If all retries failed, fallback gracefully to template if available, or throw descriptive error
-  console.warn('Groq generation retries exhausted. Providing fallback case study. Error:', lastError);
-  const fallback = FALLBACK_CASES[req.level] || FALLBACK_CASES.middle;
-  return {
-    ...fallback,
-    id: `case-${seed}`,
-    seed,
-    role: req.role,
-    excelVersion: req.excelVersion,
-    createdAt: new Date().toISOString(),
-  };
+  // If all retries failed, throw descriptive error so user knows what went wrong
+  throw new Error(
+    `Gagal men-generate studi kasus dari AI: ${(lastError as Error)?.message || 'Format respons tidak sesuai'}`
+  );
 }
 
-export async function regenerateTaskService(req: RegenerateTaskRequest): Promise<CaseStudy> {
-  const { caseStudy, taskNo } = req;
   const apiKey = req.customApiKey || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
+  console.log('RegenerateTaskService API Key resolved (first 5 chars):', apiKey ? apiKey.slice(0,5) + '...' : 'none');
+  const { caseStudy, taskNo } = req;
+  
 
   const oldTask = caseStudy.tasks.find((t) => t.no === taskNo);
   if (!oldTask) {
@@ -109,6 +104,10 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
   }
 
   if (!apiKey || apiKey.trim() === '') {
+    throw new Error(
+      'API Key belum terdeteksi. Silakan klik tombol "API Key" di kanan atas navbar untuk memasukkan key Anda.'
+    );
+  }
     // Generate an algorithmic variation for this task
     const updatedTasks = caseStudy.tasks.map((t) => {
       if (t.no === taskNo) {

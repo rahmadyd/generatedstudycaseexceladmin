@@ -28,7 +28,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     ? 'https://api.groq.com/openai/v1/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
 
-  const defaultModel = isGroqKey ? 'openai/gpt-oss-120b' : 'gpt-4o-mini';
+  const defaultModel = isGroqKey ? 'openai/gpt-oss-20b' : 'gpt-4o-mini';
   const model = options.model || defaultModel;
 
   const messages = [];
@@ -52,8 +52,8 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     }),
   });
 
-  // If model not found on Groq, fallback to openai/gpt-oss-20b
-  if (!response.ok && isGroqKey && model === 'openai/gpt-oss-120b') {
+  // If model error on Groq, fallback to qwen/qwen3.8-27b
+  if (!response.ok && isGroqKey && model === 'openai/gpt-oss-20b') {
     response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -61,7 +61,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
         Authorization: `Bearer ${cleanKey}`,
       },
       body: JSON.stringify({
-        model: 'openai/gpt-oss-20b',
+        model: 'qwen/qwen3.8-27b',
         messages,
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 3500,
