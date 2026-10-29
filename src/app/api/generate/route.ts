@@ -21,12 +21,6 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
 
-    // Check if client provided custom key in header
-    const headerKey = req.headers.get('x-openai-api-key') || req.headers.get('x-groq-api-key') || req.headers.get('x-api-key');
-    if (headerKey && !body.customApiKey) {
-      body.customApiKey = headerKey;
-    }
-
     const parseResult = GenerateRequestSchema.safeParse(body);
     if (!parseResult.success) {
       return NextResponse.json(

@@ -3,7 +3,6 @@ import { CaseStudy, GenerateRequest, RegenerateTaskRequest, Task } from '../shar
 import { compileGeneratePrompt, compileRegenerateTaskPrompt } from './prompts';
 import { callGroqChat } from './groq';
 import { validateAndSanitizeCaseStudy } from './validator';
-import { FALLBACK_CASES } from './fallbacks';
 
 // Utility to strip possible markdown fences from AI output
 function cleanJsonString(str: string): string {
@@ -24,6 +23,11 @@ function generateRandomSeed(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
+// Resolve API key from environment only
+function resolveApiKey(): string {
+  return process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || '';
+}
+
 /** Generate a new case study */
 export async function generateCaseStudyService(req: GenerateRequest): Promise<CaseStudy> {
   console.log('generateCaseStudyService called with req:', req);
@@ -31,13 +35,12 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
   const seed = req.seed && req.seed.trim() !== '' ? req.seed.trim() : generateRandomSeed();
   console.log('Using seed:', seed);
 
-  const apiKey = req.customApiKey || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
-  console.log('API Key resolved (first 5 chars):', apiKey ? apiKey.slice(0, 5) + '...' : 'none');
+  const apiKey = resolveApiKey();
 
   // Ensure an API key is present
   if (!apiKey || apiKey.trim() === '') {
     throw new Error(
-      'API Key belum terdeteksi. Silakan klik tombol "API Key" di kanan atas navbar dan masukkan Groq API Key Anda (gsk_...) agar AI dapat membuat studi kasus baru.'
+      'API Key tidak ditemukan. Pastikan environment variable GROQ_API_KEY sudah diset di Vercel.'
     );
   }
 
@@ -97,8 +100,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
 /** Regenerate a single task within an existing case study */
 export async function regenerateTaskService(req: RegenerateTaskRequest): Promise<CaseStudy> {
   const { caseStudy, taskNo } = req;
-  const apiKey = req.customApiKey || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
-  console.log('RegenerateTaskService API Key resolved (first 5 chars):', apiKey ? apiKey.slice(0, 5) + '...' : 'none');
+  const apiKey = resolveApiKey();
 
   const oldTask = caseStudy.tasks.find((t) => t.no === taskNo);
   if (!oldTask) {
@@ -107,15 +109,9 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
 
   if (!apiKey || apiKey.trim() === '') {
     throw new Error(
-      'API Key belum terdeteksi. Silakan klik tombol "API Key" di kanan atas navbar untuk memasukkan key Anda.'
+      'API Key tidak ditemukan. Pastikan environment variable GROQ_API_KEY sudah diset di Vercel.'
     );
   }
-
-  // Fallback variation (currently disabled). Uncomment to use without AI.
-  // const updatedTasks = caseStudy.tasks.map((t) =>
-  //   t.no === taskNo ? { ...t, instruction: `[Variasi Baru] ${t.instruction} - Tambahkan validasi batas nilai dan formatting sel.`, hint: `${t.hint} (Periksa format angka/tampilan)`, targetResult: `${t.targetResult} (Kalkulasi ulang)` } : t
-  // );
-  // return { ...caseStudy, tasks: updatedTasks };
 
   const prompt = compileRegenerateTaskPrompt({
     title: caseStudy.title,

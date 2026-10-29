@@ -13,23 +13,20 @@ import { AnswerKeySection } from './components/AnswerKeySection';
 import { PortfolioSection } from './components/PortfolioSection';
 import { PDFExportSection } from './components/PDFExportSection';
 import { HistoryModal } from './components/HistoryModal';
-import { SettingsModal } from './components/SettingsModal';
 
 import { CaseStudy, GenerateRequest, Level } from '@/shared/schema';
 import { FALLBACK_CASES } from '@/backend/fallbacks';
 import { generateDatasetRows } from './utils/dataset-generator';
 import {
-  getCustomApiKey,
   getSavedCasesHistory,
   getSavedSettings,
   getTaskProgress,
   safeSetStorage,
   saveCaseToHistory,
-  saveCustomApiKey,
   saveLastSettings,
   saveTaskProgress,
 } from './utils/storage';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [caseStudy, setCaseStudy] = useState<CaseStudy>(FALLBACK_CASES.middle);
@@ -40,9 +37,7 @@ export default function App() {
 
   // Modals
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [historyList, setHistoryList] = useState<CaseStudy[]>([]);
-  const [customApiKey, setCustomApiKey] = useState<string>('');
 
   // Theme
   const [darkMode, setDarkMode] = useState<boolean>(false);
@@ -62,15 +57,11 @@ export default function App() {
       }
     }
 
-    // 2. BYOK Key
-    const savedKey = getCustomApiKey();
-    setCustomApiKey(savedKey);
-
-    // 3. History
+    // 2. History
     const savedHistory = getSavedCasesHistory();
     setHistoryList(savedHistory);
 
-    // 4. URL Params check (?seed=...)
+    // 3. URL Params check (?seed=...)
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const urlSeed = params.get('seed');
@@ -138,20 +129,8 @@ export default function App() {
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(customApiKey
-            ? {
-                'x-groq-api-key': customApiKey,
-                'x-openai-api-key': customApiKey,
-                'x-api-key': customApiKey,
-              }
-            : {}),
-        },
-        body: JSON.stringify({
-          ...req,
-          customApiKey: customApiKey || undefined,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
       });
 
       const data = await res.json();
@@ -186,21 +165,8 @@ export default function App() {
     try {
       const res = await fetch('/api/regenerate-task', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(customApiKey
-            ? {
-                'x-groq-api-key': customApiKey,
-                'x-openai-api-key': customApiKey,
-                'x-api-key': customApiKey,
-              }
-            : {}),
-        },
-        body: JSON.stringify({
-          caseStudy,
-          taskNo,
-          customApiKey: customApiKey || undefined,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caseStudy, taskNo }),
       });
 
       const data = await res.json();
@@ -250,11 +216,6 @@ export default function App() {
     setHistoryList([]);
   };
 
-  const handleSaveApiKey = (key: string) => {
-    saveCustomApiKey(key);
-    setCustomApiKey(key);
-  };
-
   return (
     <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col font-sans transition-colors duration-200">
       {/* Navbar */}
@@ -262,11 +223,9 @@ export default function App() {
         darkMode={darkMode}
         onToggleDarkMode={toggleDarkMode}
         onOpenHistory={() => setIsHistoryOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        hasCustomApiKey={Boolean(customApiKey)}
       />
 
-      {/* Sticky Navigation (SPEC Section 3) */}
+      {/* Sticky Navigation */}
       <StickyNav
         completedCount={completedTasks.length}
         totalTasks={caseStudy.tasks.length}
@@ -285,7 +244,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 1. Form generate: level, bidang admin, versi Excel, [Generate Soal] */}
+        {/* 1. Form generate */}
         <GenerateForm
           onGenerate={handleGenerate}
           isLoading={isLoading}
@@ -300,7 +259,7 @@ export default function App() {
         {/* 3. Skenario */}
         <ScenarioSection caseStudy={caseStudy} />
 
-        {/* 4. Dataset: preview 5 baris, [Download XLSX] [Download CSV] */}
+        {/* 4. Dataset */}
         <DatasetSection caseStudy={caseStudy} datasetRows={datasetRows} />
 
         {/* 5. Daftar tugas (checklist) */}
@@ -312,10 +271,10 @@ export default function App() {
           regeneratingTaskNo={regeneratingTaskNo}
         />
 
-        {/* 6. Clue rumus: Disarankan / Boleh / Dilarang */}
+        {/* 6. Clue rumus */}
         <FormulaClues formulas={caseStudy.formulas} />
 
-        {/* Mode Portofolio Brief & Rubrik (Khusus Level Portofolio) */}
+        {/* Mode Portofolio (Khusus Level Portofolio) */}
         {caseStudy.level === 'portfolio' && (
           <PortfolioSection
             portfolioBrief={caseStudy.portfolioBrief}
@@ -323,34 +282,27 @@ export default function App() {
           />
         )}
 
-        {/* 7. Kunci jawaban (disembunyikan) */}
+        {/* 7. Kunci jawaban */}
         <AnswerKeySection answerKey={caseStudy.answerKey} />
 
-        {/* 8. [Download Soal PDF] [Download Kunci Jawaban PDF] <- PALING BAWAH SESUAI SPEC! */}
+        {/* 8. Export PDF */}
         <PDFExportSection caseStudy={caseStudy} datasetRows={datasetRows} />
       </main>
 
       {/* Footer */}
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-6 text-center text-xs text-gray-500 dark:text-gray-400">
         <p>
-          Generator Studi Kasus Excel Admin &copy; 2026. Ditenagai oleh ChatGPT (OpenAI) & Faker.js. Siap dideploy ke Vercel.
+          Generator Studi Kasus Excel Admin &copy; 2026. Ditenagai oleh Groq AI. Siap dideploy ke Vercel.
         </p>
       </footer>
 
-      {/* Modals */}
+      {/* History Modal */}
       <HistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         history={historyList}
         onSelectCase={handleSelectCaseFromHistory}
         onClearHistory={handleClearHistory}
-      />
-
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        currentApiKey={customApiKey}
-        onSaveApiKey={handleSaveApiKey}
       />
     </div>
   );

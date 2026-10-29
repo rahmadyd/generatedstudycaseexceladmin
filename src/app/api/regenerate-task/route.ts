@@ -20,10 +20,6 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const headerKey = req.headers.get('x-openai-api-key') || req.headers.get('x-groq-api-key') || req.headers.get('x-api-key');
-    if (headerKey && !body.customApiKey) {
-      body.customApiKey = headerKey;
-    }
 
     const parseResult = RegenerateTaskRequestSchema.safeParse(body);
     if (!parseResult.success) {

@@ -75,13 +75,11 @@ export const GenerateRequestSchema = z.object({
   excelVersion: ExcelVersionEnum,
   taskCount: z.number().min(2).max(10).default(5),
   seed: z.string().optional(),
-  customApiKey: z.string().optional(),
 });
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 
 export const RegenerateTaskRequestSchema = z.object({
   caseStudy: CaseStudySchema,
   taskNo: z.number(),
-  customApiKey: z.string().optional(),
 });
 export type RegenerateTaskRequest = z.infer<typeof RegenerateTaskRequestSchema>;

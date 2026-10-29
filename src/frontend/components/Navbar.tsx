@@ -1,22 +1,18 @@
 'use client';
 
 import React from 'react';
-import { FileSpreadsheet, History, Key, Moon, Sun, Sparkles } from 'lucide-react';
+import { FileSpreadsheet, History, Moon, Sun } from 'lucide-react';
 
 interface NavbarProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
   onOpenHistory: () => void;
-  onOpenSettings: () => void;
-  hasCustomApiKey: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   darkMode,
   onToggleDarkMode,
   onOpenHistory,
-  onOpenSettings,
-  hasCustomApiKey,
 }) => {
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200 dark:border-gray-800 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md">
@@ -36,7 +32,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
-              Generator Studi Kasus Excel Bidang Admin & Portofolio
+              Generator Studi Kasus Excel Bidang Admin &amp; Portofolio
             </p>
           </div>
         </div>
@@ -51,19 +47,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <History className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span className="hidden sm:inline">Riwayat</span>
-          </button>
-
-          {/* BYOK / Settings button */}
-          <button
-            onClick={onOpenSettings}
-            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition relative"
-            title="Pengaturan API Key (BYOK)"
-          >
-            <Key className="w-4 h-4 text-amber-500" />
-            <span className="hidden sm:inline">API Key</span>
-            {hasCustomApiKey && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 absolute top-1 right-1" />
-            )}
           </button>
 
           {/* Dark Mode toggle */}
