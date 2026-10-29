@@ -34,11 +34,13 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
 
 5. **Pemeriksaan Rumus Otomatis**:
    - Memvalidasi agar `answerKey` tidak pernah melanggar daftar formula `forbidden`.
+   - Menggunakan format formula Excel Indonesia pada kunci jawaban: titik koma (`;`) sebagai pemisah argumen dan koma (`,`) untuk desimal, dengan nama fungsi berbahasa Inggris.
 
 6. **Checklist Tugas & Progress Tracker**:
    - Interaktif centang tugas dengan indikator progress bar ("3 dari 6 tugas selesai").
    - Efek perayaan konfeti saat seluruh tugas terselesaikan.
    - Tombol **"Ganti Tugas Ini"** untuk meregenerate satu nomor tugas saja tanpa membuat ulang seluruh studi kasus.
+   - Panduan rumus admin dapat dibuka dari header, berisi kategori, kegunaan, dan contoh rumus dengan format Indonesia.
 
 7. **Export Dokumen PDF Standar A4**:
    - **PDF Soal**: Judul, skenario, tabel tugas + target mandiri, aturan rumus, dan preview dataset 5 baris.

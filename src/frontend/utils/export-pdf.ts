@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CaseStudy } from '@/shared/schema';
 import { DataRow } from './dataset-generator';
+import { normalizeExcelFormulaLocale } from '@/shared/excel-formula-locale';
 
 export function exportSoalPDF(caseStudy: CaseStudy, previewRows: DataRow[]) {
   const doc = new jsPDF({
@@ -212,7 +213,7 @@ export function exportKunciJawabanPDF(caseStudy: CaseStudy) {
   doc.setFontSize(8.5);
   doc.setTextColor(146, 64, 14);
   doc.text(
-    'PERHATIAN: Kunci jawaban ini memuat rumus acuan dan metodologi verifikasi. Gunakan setelah mencoba mandiri.',
+    'Format Excel Indonesia: pemisah argumen ; dan koma desimal , (nama fungsi Inggris). Gunakan setelah mencoba mandiri.',
     18,
     cursorY + 7
   );
@@ -220,7 +221,7 @@ export function exportKunciJawabanPDF(caseStudy: CaseStudy) {
 
   const answerRows = caseStudy.tasks.map((task) => {
     const keyItem = caseStudy.answerKey.find((a) => a.task === task.no);
-    const formula = keyItem ? keyItem.formula : '-';
+    const formula = keyItem ? normalizeExcelFormulaLocale(keyItem.formula) : '-';
     const explanation = keyItem ? keyItem.explanation : '-';
     return [
       `Tugas #${task.no}`,

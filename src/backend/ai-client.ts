@@ -39,9 +39,12 @@ function getGroqPrimaryModel(): string {
   return configured && configured.length > 0 ? configured : 'llama-3.3-70b-versatile';
 }
 
-function getGroqFallbackModel(): string {
+function getGroqFallbackModel(primaryModel?: string): string {
   const configured = process.env.GROQ_FALLBACK_MODEL?.trim();
-  return configured && configured.length > 0 ? configured : 'llama-3.1-8b-instant';
+  if (configured && configured.length > 0) {
+    return configured;
+  }
+  return primaryModel || 'llama-3.3-70b-versatile';
 }
 
 export async function callChatAI(options: AICompletionOptions): Promise<string> {
@@ -62,7 +65,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     : 'https://api.openai.com/v1/chat/completions';
 
   const defaultModel = isGroqKey ? getGroqPrimaryModel() : 'gpt-4o-mini';
-  const fallbackModel = isGroqKey ? getGroqFallbackModel() : 'gpt-4o-mini';
+  const fallbackModel = isGroqKey ? getGroqFallbackModel(defaultModel) : 'gpt-4o-mini';
   const model = options.model || defaultModel;
 
   const messages: { role: string; content: string }[] = [];
@@ -89,7 +92,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     body: buildBody(model),
   });
 
-  // Fallback to a still-supported Groq model if the main model fails.
+  // Fallback only to a second model if explicitly configured and different.
   if (!response.ok && isGroqKey && model === defaultModel && fallbackModel !== defaultModel) {
     response = await fetch(endpoint, {
       method: 'POST',

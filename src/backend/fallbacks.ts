@@ -39,7 +39,7 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       {
         no: 5,
         instruction: 'Beri status Diskon menggunakan fungsi IF: jika Subtotal >= Rp 500.000 maka "Dapat Voucher 10%", jika tidak maka "Non-Voucher".',
-        hint: '=IF(F2>=500000, "Dapat Voucher 10%", "Non-Voucher")',
+        hint: '=IF(F2>=500000; "Dapat Voucher 10%"; "Non-Voucher")',
         targetResult: 'Kolom Bonus terisi teks sesuai ketentuan tanpa ada error formula.',
       },
     ],
@@ -88,19 +88,19 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       {
         no: 2,
         instruction: 'Tarik Nama_Barang dan Harga_Satuan dari sheet Master_Barang menggunakan VLOOKUP atau XLOOKUP yang dibungkus IFERROR.',
-        hint: '=IFERROR(VLOOKUP(TRIM(B2), Master_Barang!$A$2:$C$50, 2, FALSE), "Tidak Ditemukan")',
+        hint: '=IFERROR(VLOOKUP(TRIM(B2); Master_Barang!$A$2:$C$50; 2; FALSE); "Tidak Ditemukan")',
         targetResult: 'Semua baris terisi nama produk secara akurat.',
       },
       {
         no: 3,
         instruction: 'Hitung total kuantitas barang keluar untuk kategori "Elektronik" menggunakan formula SUMIFS.',
-        hint: '=SUMIFS(Qty_Keluar, Kategori, "Elektronik")',
+        hint: '=SUMIFS(Qty_Keluar; Kategori; "Elektronik")',
         targetResult: 'Total angka unit barang keluar kategori Elektronik terverifikasi.',
       },
       {
         no: 4,
         instruction: 'Hitung frekuensi transaksi pengiriman yang terjadi pada shift malam dengan COUNTIFS.',
-        hint: '=COUNTIFS(Shift, "Malam", Status, "Selesai")',
+        hint: '=COUNTIFS(Shift; "Malam"; Status; "Selesai")',
         targetResult: 'Jumlah transaksi shift malam selesai.',
       },
       {
@@ -153,7 +153,7 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
     tasks: [
       {
         no: 1,
-        instruction: 'Tarik plafon anggaran berdasarkan kombinasi Kode Departemen dan Akun Pengeluaran menggunakan formula INDEX-MATCH 2 arah atau INDEX(..., MATCH(1, (range1=crit1)*(range2=crit2), 0)).',
+        instruction: 'Tarik plafon anggaran berdasarkan kombinasi Kode Departemen dan Akun Pengeluaran menggunakan formula INDEX-MATCH 2 arah atau INDEX(...; MATCH(1; (range1=crit1)*(range2=crit2); 0)).',
         hint: 'Gunakan INDEX dengan MATCH array multi-kriteria.',
         targetResult: 'Plafon anggaran terhubung otomatis sesuai sheet Budget_Master.',
       },
@@ -166,7 +166,7 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       {
         no: 3,
         instruction: 'Hitung selisih Variance (Anggaran - Realisasi) dan tentukan status efisiensi dengan formula IFS: Jika Variance < 0 "Over Budget", Jika Variance = 0 "On Track", Jika Variance > 0 "Surplus".',
-        hint: '=IFS(Variance<0, "Over Budget", Variance=0, "On Track", Variance>0, "Surplus")',
+        hint: '=IFS(Variance<0; "Over Budget"; Variance=0; "On Track"; Variance>0; "Surplus")',
         targetResult: 'Status anggaran terisi otomatis.',
       },
       {

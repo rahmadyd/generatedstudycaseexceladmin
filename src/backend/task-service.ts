@@ -1,5 +1,6 @@
 // Backend services for generating and regenerating case studies
 import { CaseStudy, GenerateRequest, RegenerateTaskRequest, Task } from '../shared/schema';
+import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
 import { compileGeneratePrompt, compileRegenerateTaskPrompt } from './prompts';
 import { callGroqChat } from './groq';
 import { validateAndSanitizeCaseStudy } from './validator';
@@ -110,7 +111,11 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
   if (newAnswer?.formula) {
     finalAnswerKey = caseStudy.answerKey.map((a) =>
       a.task === taskNo
-        ? { task: taskNo, formula: newAnswer.formula, explanation: newAnswer.explanation || '' }
+        ? {
+            task: taskNo,
+            formula: normalizeExcelFormulaLocale(newAnswer.formula),
+            explanation: newAnswer.explanation || '',
+          }
         : a
     );
   }

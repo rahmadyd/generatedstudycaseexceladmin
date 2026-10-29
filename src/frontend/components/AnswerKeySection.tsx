@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { KeyRound, Eye, EyeOff, Copy, Check, Terminal, ShieldAlert } from 'lucide-react';
 import { AnswerKeyItem } from '@/shared/schema';
+import { normalizeExcelFormulaLocale } from '@/shared/excel-formula-locale';
 
 interface AnswerKeySectionProps {
   answerKey: AnswerKeyItem[];
@@ -66,7 +67,7 @@ export const AnswerKeySection: React.FC<AnswerKeySectionProps> = ({ answerKey })
             <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/60 flex items-start space-x-2 text-xs text-amber-900 dark:text-amber-200">
               <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <span>
-                Formula di bawah ini adalah formula acuan standar. Kolom atau referensi sel dapat bervariasi bergantung pada struktur penataan sheet Anda.
+                Formula memakai format Excel Indonesia: pemisah argumen titik koma (;) dan koma desimal (,). Kolom atau referensi sel dapat bervariasi bergantung pada struktur sheet Anda.
               </span>
             </div>
 
@@ -83,7 +84,7 @@ export const AnswerKeySection: React.FC<AnswerKeySectionProps> = ({ answerKey })
 
                     <button
                       type="button"
-                      onClick={() => handleCopyFormula(item.task, item.formula)}
+                      onClick={() => handleCopyFormula(item.task, normalizeExcelFormulaLocale(item.formula))}
                       className="flex items-center space-x-1 text-xs text-emerald-700 dark:text-emerald-400 hover:underline font-medium"
                       title="Salin formula ke clipboard"
                     >
@@ -104,7 +105,7 @@ export const AnswerKeySection: React.FC<AnswerKeySectionProps> = ({ answerKey })
                   {/* Formula Box */}
                   <div className="flex items-center space-x-2 bg-gray-900 text-emerald-400 px-3.5 py-2.5 rounded-lg font-mono text-xs sm:text-sm overflow-x-auto border border-gray-800">
                     <Terminal className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                    <code>{item.formula}</code>
+                    <code>{normalizeExcelFormulaLocale(item.formula)}</code>
                   </div>
 
                   {/* Explanation */}

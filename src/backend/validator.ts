@@ -1,5 +1,6 @@
 import { CaseStudy, CaseStudySchema } from '../shared/schema';
 import { M365_ONLY_FORMULAS } from '../shared/constants';
+import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
 
 export interface ValidationResult {
   valid: boolean;
@@ -86,6 +87,10 @@ export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVers
   }
 
   const caseStudy = parseResult.data;
+  caseStudy.answerKey = caseStudy.answerKey.map((item) => ({
+    ...item,
+    formula: normalizeExcelFormulaLocale(item.formula),
+  }));
   const forbidden = (caseStudy.formulas?.forbidden || []).map((f) => f.toUpperCase().trim());
   const excelVersion = expectedExcelVersion || caseStudy.excelVersion || 'Microsoft 365';
 

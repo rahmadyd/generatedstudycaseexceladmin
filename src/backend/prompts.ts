@@ -34,6 +34,7 @@ Parameters:
 - Do NOT make fake download links! The dataset schema will be used by our code generator to create the real XLSX/CSV file.
 - Provide a clear, realistic Indonesian administrative scenario.
 - In answerKey, each formula MUST NOT use any formulas listed under forbidden.
+- Use Indonesian Excel regional notation in every formula example, hint, and answer key: use semicolons (\`;\`) between function arguments and commas (\`,\`) for decimal values. Keep English function names. For example: \`=IF(A1>0; 1,5; 0)\` and \`=SUMIFS(C:C; A:A; "Jakarta")\`. Do not change commas inside quoted text.
 - dataTraps should be an array of strings (e.g. ["Spasi berlebih pada kode barang", "Tanggal tersimpan sebagai teks"]).
 - Each task in tasks must have:
   - no: number (1, 2, ...)
@@ -108,6 +109,7 @@ CRITICAL RULES:
 - "task": { "no": {{taskNo}}, "instruction": "...", "hint": "...", "targetResult": "..." }
 - "answerKey": { "task": {{taskNo}}, "formula": "=...", "explanation": "..." }
 - The formula MUST NOT use any formulas in forbidden list: {{forbiddenFormulas}}!
+- Use Indonesian Excel regional notation in the formula and any formula shown in the hint: use semicolons (\`;\`) between function arguments and commas (\`,\`) for decimal values. Keep English function names and do not change commas inside quoted text.
 
 Schema:
 \`\`\`json

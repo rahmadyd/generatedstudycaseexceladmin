@@ -29,7 +29,7 @@ export const FormulaClues: React.FC<FormulaCluesProps> = ({ formulas }) => {
               5. Clue & Aturan Rumus Excel
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Panduan formula resmi agar hasil pengerjaan sesuai dengan standar level yang dipilih.
+              Panduan formula sesuai level. Kunci jawaban menggunakan titik koma (;) sebagai pemisah argumen.
             </p>
           </div>
         </div>

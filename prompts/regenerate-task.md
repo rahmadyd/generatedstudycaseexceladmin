@@ -20,6 +20,7 @@ CRITICAL RULES:
 - "task": { "no": {{taskNo}}, "instruction": "...", "hint": "...", "targetResult": "..." }
 - "answerKey": { "task": {{taskNo}}, "formula": "=...", "explanation": "..." }
 - The formula MUST NOT use any formulas in forbidden list: {{forbiddenFormulas}}!
+- Use Indonesian Excel regional notation in the formula and any formula shown in the hint: use semicolons (`;`) between function arguments and commas (`,`) for decimal values. Keep English function names and do not change commas inside quoted text.
 
 Schema:
 ```json
