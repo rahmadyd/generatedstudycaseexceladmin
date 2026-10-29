@@ -28,7 +28,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     ? 'https://api.groq.com/openai/v1/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
 
-  const defaultModel = isGroqKey ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini';
+  const defaultModel = isGroqKey ? 'openai/gpt-oss-120b' : 'gpt-4o-mini';
   const model = options.model || defaultModel;
 
   const messages = [];
@@ -37,7 +37,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
   }
   messages.push({ role: 'user', content: options.userPrompt });
 
-  const response = await fetch(endpoint, {
+  let response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -51,6 +51,24 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
       response_format: { type: 'json_object' },
     }),
   });
+
+  // If model not found on Groq, fallback to openai/gpt-oss-20b
+  if (!response.ok && isGroqKey && model === 'openai/gpt-oss-120b') {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cleanKey}`,
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-20b',
+        messages,
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 3500,
+        response_format: { type: 'json_object' },
+      }),
+    });
+  }
 
   if (!response.ok) {
     const errorBody = await response.text();
