@@ -3,7 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import { Sparkles, Sliders, RefreshCw, AlertCircle, Info } from 'lucide-react';
 import { Level, ExcelVersion, FormulaStyle, GenerateRequest, INDUSTRY_OPTIONS, Industry, TaskCountMode } from '@/shared/schema';
-import { ADMIN_ROLES, getRecommendedTaskCount, LEVEL_CONFIG } from '@/shared/constants';
+import { ADMIN_ROLES, getRecommendedAdminRole, getRecommendedTaskCount, LEVEL_CONFIG } from '@/shared/constants';
+
+const AUTO_ADMIN_ROLE = 'recommended';
 
 interface GenerateFormProps {
   onGenerate: (req: GenerateRequest) => Promise<void>;
@@ -32,6 +34,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
 }) => {
   const [level, setLevel] = useState<Level | null>(initialLevel ?? null);
   const [role, setRole] = useState<string>(initialRole);
+  const [useRecommendedRole, setUseRecommendedRole] = useState(false);
   const [excelVersion, setExcelVersion] = useState<ExcelVersion>(initialExcelVersion);
   const [formulaStyle, setFormulaStyle] = useState<FormulaStyle>(initialFormulaStyle);
   const [structuredReferenceAt, setStructuredReferenceAt] = useState(initialStructuredReferenceAt);
@@ -44,6 +47,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   useEffect(() => {
     setLevel(initialLevel ?? null);
     setRole(initialRole);
+    setUseRecommendedRole(false);
     setExcelVersion(initialExcelVersion);
     setFormulaStyle(initialFormulaStyle);
     setStructuredReferenceAt(initialStructuredReferenceAt);
@@ -55,6 +59,10 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   const recommendedTaskCount = level
     ? getRecommendedTaskCount(level, industry)
     : 5;
+  const recommendedRole = getRecommendedAdminRole(industry);
+  const effectiveRole = useRecommendedRole ? recommendedRole : role;
+  const recommendedRoleOption = ADMIN_ROLES.find((item) => item.id === recommendedRole);
+  const selectedRoleOption = ADMIN_ROLES.find((item) => item.id === effectiveRole);
   const effectiveTaskCount = taskCountMode === 'auto' ? recommendedTaskCount : taskCount;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -63,7 +71,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
 
     await onGenerate({
       level,
-      role,
+      role: effectiveRole,
       excelVersion,
       formulaStyle,
       structuredReferenceAt,
@@ -165,21 +173,37 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
           {/* Bidang Admin */}
           <div>
             <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1.5">
-              Bidang Admin (Jenis Pekerjaan)
+              Pekerjaan admin yang ingin dilatih
             </label>
             <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
+              value={useRecommendedRole ? AUTO_ADMIN_ROLE : role}
+              onChange={(event) => {
+                if (event.target.value === AUTO_ADMIN_ROLE) {
+                  setUseRecommendedRole(true);
+                } else {
+                  setUseRecommendedRole(false);
+                  setRole(event.target.value);
+                }
+              }}
               className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             >
+              <option value={AUTO_ADMIN_ROLE}>Belum yakin — pilihkan untuk saya</option>
               {ADMIN_ROLES.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.label} ({r.desc})
+                  {r.label}
                 </option>
               ))}
             </select>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-              Menentukan tugas yang dikerjakan, misalnya rekap penjualan atau stok gudang.
+            <p className="mt-1.5 text-[11px] leading-relaxed text-gray-600 dark:text-gray-300">
+              {useRecommendedRole ? (
+                <>
+                  Rekomendasi untuk industri ini: <strong>{recommendedRoleOption?.label ?? recommendedRole}</strong>
+                  {' — '}{recommendedRoleOption?.desc ?? 'pekerjaan admin umum'}.
+                </>
+              ) : (
+                <>{selectedRoleOption?.desc ?? 'Pilih pekerjaan admin yang ingin dilatih.'}</>
+              )}
+              {' '}Industri menentukan konteks perusahaan; pekerjaan admin menentukan tugas latihannya.
             </p>
           </div>
 
@@ -198,7 +222,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
               ))}
             </select>
             <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-              Menentukan konteks perusahaan dan dataset. Admin tetap menentukan jenis tugasnya.
+              Menentukan konteks usaha dan contoh data. Pekerjaan admin menentukan jenis tugas latihannya.
             </p>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { faker } from '@faker-js/faker';
 import { CaseStudy, DatasetColumn } from '@/shared/schema';
+import { getIndustryColumnValues, INDUSTRY_PROFILES } from '@/shared/constants';
 
 // Simple deterministic hash to number for seeded PRNG
 function cyrb53(str: string, seed = 0) {
@@ -35,7 +36,7 @@ export function generateDatasetRows(caseStudy: CaseStudy): DataRow[] {
     const row: DataRow = {};
 
     for (const col of columns) {
-      row[col.name] = generateCellValue(col, i);
+      row[col.name] = generateCellValue(col, i, caseStudy);
     }
 
     rows.push(row);
@@ -49,8 +50,17 @@ export function generateDatasetRows(caseStudy: CaseStudy): DataRow[] {
   return rows;
 }
 
-function generateCellValue(col: DatasetColumn, rowIndex: number): string | number {
+function generateCellValue(col: DatasetColumn, rowIndex: number, caseStudy: CaseStudy): string | number {
   const colNameLower = col.name.toLowerCase();
+  const industryProfile = caseStudy.industry && caseStudy.industry !== 'Acak'
+    ? INDUSTRY_PROFILES[caseStudy.industry]
+    : undefined;
+  const isIdentifier = /(^|[_\s])(kode|id|sku|no|nomor)([_\s]|$)|^(kode|id|sku|no|nomor)/i.test(col.name);
+  const industryValues = getIndustryColumnValues(col.name, caseStudy.industry);
+
+  if (industryProfile && industryValues && col.type !== 'date' && col.type !== 'int' && col.type !== 'number' && col.type !== 'currency') {
+    return faker.helpers.arrayElement(industryValues);
+  }
 
   // If enum values provided
   if (col.type === 'enum' && col.values && col.values.length > 0) {
@@ -102,12 +112,22 @@ function generateCellValue(col: DatasetColumn, rowIndex: number): string | numbe
     return `${prefix}-${2026}-${String(rowIndex + 1).padStart(4, '0')}`;
   }
 
-  if (colNameLower.includes('nama') || colNameLower.includes('customer') || colNameLower.includes('pegawai')) {
+  if (colNameLower.includes('vendor') || colNameLower.includes('supplier') || colNameLower.includes('pemasok') || colNameLower.includes('perusahaan')) {
+    return faker.company.name();
+  }
+
+  if (colNameLower.includes('pelanggan') || colNameLower.includes('customer') || colNameLower.includes('klien') || colNameLower.includes('nasabah')) {
+    return faker.company.name();
+  }
+
+  if (colNameLower.includes('nama') || colNameLower.includes('pegawai') || colNameLower.includes('karyawan') || colNameLower.includes('mekanik')) {
     return faker.person.fullName();
   }
 
-  if (colNameLower.includes('barang') || colNameLower.includes('produk') || colNameLower.includes('item')) {
-    return faker.commerce.productName();
+  if (!isIdentifier && (colNameLower.includes('barang') || colNameLower.includes('produk') || colNameLower.includes('item'))) {
+    return industryProfile
+      ? faker.helpers.arrayElement(industryProfile.products)
+      : faker.commerce.productName();
   }
 
   if (colNameLower.includes('kota') || colNameLower.includes('wilayah') || colNameLower.includes('cabang')) {

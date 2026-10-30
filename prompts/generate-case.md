@@ -4,10 +4,12 @@ Your job is to generate a comprehensive, realistic Excel practice case study tai
 Parameters:
 - Level: {{level}} (Options: easy, middle, advance, portfolio)
 - Administrative Role: {{role}} (e.g., Admin Penjualan, Admin Gudang/Inventory, Admin HRD/Absensi, Admin Keuangan/Kasir, Admin Pengadaan/Purchasing, Sekretaris/Admin Surat)
+- Administrative Role Responsibilities: {{roleDetails}}
 - Excel Version: {{excelVersion}} (Options: "2016/2019" or "Microsoft 365")
 - Formula Reference Style: {{formulaStyle}}
 - Structured Reference @ setting: {{structuredReferenceAt}}
 - Industry/Company context: {{companyName}} (Industry: {{industry}}, Theme: {{theme}}, Target Period: {{period}})
+- Industry-specific business and dataset guidance: {{industryProfile}}
 - Task Count: {{taskCount}}
 - Language: Indonesian
 - Random Seed: {{seed}}
@@ -27,6 +29,8 @@ Parameters:
    - Must include `rubric` and `portfolioBrief` with client brief, deliverables, and a complete markdown README template.
 
 ### CRITICAL RULES:
+- The selected administrative role and industry are mandatory. The scenario, tasks, dataset columns, and enum values must all describe work in the selected role at the selected industry. Do not substitute another role or industry. Use the industry-specific vocabulary above in both the scenario and dataset; do not make a generic unrelated retail/sales case unless that is the selected industry.
+- Dataset rows will be generated from the dataset schema. Give every column a clear meaning for this role and industry. For enum columns, provide realistic values for the selected industry (for example crop/product/asset/service names appropriate to the industry), never generic unrelated products. Include enough operational columns to calculate the requested task answers.
 - Output MUST be valid JSON only matching the schema below.
 - Do NOT make fake download links! The dataset schema will be used by our code generator to create the real XLSX/CSV file.
 - Provide a clear, realistic Indonesian administrative scenario.

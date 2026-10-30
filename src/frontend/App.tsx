@@ -74,6 +74,8 @@ export default function App() {
       const urlIndustry = params.get('industry');
       const urlFormulaStyle = params.get('formulaStyle');
       const urlStructuredReferenceAt = params.get('structuredReferenceAt');
+      const urlTaskCountMode = params.get('taskCountMode');
+      const urlTaskCount = Number(params.get('taskCount'));
 
       if (urlSeed) {
         // If matches history item
@@ -94,8 +96,8 @@ export default function App() {
             : 'Acak',
           formulaStyle: urlFormulaStyle === 'modern' ? 'modern' : 'classic',
           structuredReferenceAt: urlStructuredReferenceAt !== 'false',
-          taskCountMode: 'auto',
-          taskCount: 5,
+          taskCountMode: urlTaskCountMode === 'manual' ? 'manual' : 'auto',
+          taskCount: Number.isInteger(urlTaskCount) && urlTaskCount >= 2 && urlTaskCount <= 10 ? urlTaskCount : 5,
           seed: urlSeed,
         });
         return;
@@ -169,6 +171,16 @@ export default function App() {
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         url.searchParams.set('seed', newCase.seed);
+        url.searchParams.set('level', newCase.level);
+        url.searchParams.set('role', newCase.role);
+        url.searchParams.set('excelVersion', newCase.excelVersion);
+        if (newCase.industry) url.searchParams.set('industry', newCase.industry);
+        if (newCase.formulaStyle) url.searchParams.set('formulaStyle', newCase.formulaStyle);
+        if (newCase.structuredReferenceAt !== undefined) {
+          url.searchParams.set('structuredReferenceAt', String(newCase.structuredReferenceAt));
+        }
+        if (newCase.taskCountMode) url.searchParams.set('taskCountMode', newCase.taskCountMode);
+        if (newCase.taskCount !== undefined) url.searchParams.set('taskCount', String(newCase.taskCount));
         window.history.replaceState({}, '', url.toString());
       }
     } catch (err) {

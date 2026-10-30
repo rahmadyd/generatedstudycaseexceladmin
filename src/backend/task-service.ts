@@ -1,9 +1,9 @@
 // Backend services for generating and regenerating case studies
 import { CaseStudy, GenerateRequest, RegenerateTaskRequest, Task } from '../shared/schema';
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
-import { compileGeneratePrompt, compileRegenerateTaskPrompt, resolveIndustry } from './prompts';
+import { compileGeneratePrompt, compileRegenerateTaskPrompt, resolveIndustry, resolveTaskCount } from './prompts';
 import { callGroqChat } from './groq';
-import { validateAndSanitizeCaseStudy } from './validator';
+import { getCaseStudyAlignmentIssues, validateAndSanitizeCaseStudy } from './validator';
 
 function cleanJsonString(str: string): string {
   let cleaned = str.trim();
@@ -20,10 +20,12 @@ function generateRandomSeed(): string {
 /** Generate a new case study */
 export async function generateCaseStudyService(req: GenerateRequest): Promise<CaseStudy> {
   const seed = req.seed && req.seed.trim() !== '' ? req.seed.trim() : generateRandomSeed();
-
-  const prompt = compileGeneratePrompt(req, seed);
+  const industry = resolveIndustry(req.industry, seed);
+  const taskCount = resolveTaskCount(req, industry);
+  const prompt = compileGeneratePrompt({ ...req, industry }, seed);
   const maxRetries = 2;
   let lastError: unknown;
+  let retryGuidance = '';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -31,7 +33,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
       const rawResponse = await callGroqChat({
         systemPrompt:
           'You are an expert Indonesian administrative business analyst and Excel educator. You output only valid JSON matching the exact schema requested.',
-        userPrompt: prompt,
+        userPrompt: `${prompt}${retryGuidance}`,
         temperature: 0.65 + attempt * 0.1,
       });
 
@@ -47,15 +49,25 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         (parsed as Record<string, unknown>).level = req.level;
         (parsed as Record<string, unknown>).role = req.role;
         (parsed as Record<string, unknown>).excelVersion = req.excelVersion;
-        (parsed as Record<string, unknown>).industry = resolveIndustry(req.industry, seed);
+        (parsed as Record<string, unknown>).industry = industry;
         (parsed as Record<string, unknown>).formulaStyle = req.formulaStyle ?? 'classic';
         (parsed as Record<string, unknown>).structuredReferenceAt = req.structuredReferenceAt ?? true;
+        (parsed as Record<string, unknown>).taskCountMode = req.taskCountMode ?? 'auto';
+        (parsed as Record<string, unknown>).taskCount = taskCount;
         (parsed as Record<string, unknown>).createdAt = new Date().toISOString();
         (parsed as Record<string, unknown>).id = `case-${seed}`;
       }
 
       const validation = validateAndSanitizeCaseStudy(parsed, req.excelVersion);
-      if (validation.valid && validation.data) return validation.data;
+      if (validation.valid && validation.data) {
+        const alignmentIssues = getCaseStudyAlignmentIssues(validation.data, req.role, industry);
+        if (validation.data.tasks.length !== taskCount) {
+          alignmentIssues.push(`jumlah tugas harus tepat ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
+        }
+        if (alignmentIssues.length === 0) return validation.data;
+        retryGuidance = `\n\nMANDATORY: The previous response did not match the requested criteria: ${alignmentIssues.join('; ')}. Regenerate the entire case and ensure role=${req.role}, industry=${industry}, the narrative/tasks show the selected role, and dataset columns/values are specific to both. Do not return an unrelated generic business case.`;
+        throw new Error(`Hasil AI tidak selaras dengan pilihan bidang admin/industri: ${alignmentIssues.join('; ')}`);
+      }
 
       throw new Error(`Validasi gagal (attempt ${attempt + 1}): ${validation.errors.join('; ')}`);
     } catch (err) {

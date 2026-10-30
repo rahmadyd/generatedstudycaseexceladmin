@@ -3,7 +3,7 @@
 import React from 'react';
 import { X, History, Trash2, ArrowRight, Calendar, Tag } from 'lucide-react';
 import { CaseStudy } from '@/shared/schema';
-import { LEVEL_CONFIG } from '@/shared/constants';
+import { LEVEL_CONFIG, ROLE_PROFILES } from '@/shared/constants';
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -81,7 +81,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       </span>
                       <span className="flex items-center space-x-1 text-[11px] text-gray-500 dark:text-gray-400">
                         <Tag className="w-3 h-3" />
-                        <span>{c.role}</span>
+                        <span>{ROLE_PROFILES[c.role]?.label ?? c.role}</span>
                       </span>
                       <span className="flex items-center space-x-1 text-[11px] text-gray-400">
                         <Calendar className="w-3 h-3" />

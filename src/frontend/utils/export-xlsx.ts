@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { CaseStudy } from '@/shared/schema';
 import { DataRow } from './dataset-generator';
+import { ROLE_PROFILES } from '@/shared/constants';
 
 export function exportDatasetToXLSX(caseStudy: CaseStudy, rows: DataRow[]) {
   const wb = XLSX.utils.book_new();
@@ -10,7 +11,8 @@ export function exportDatasetToXLSX(caseStudy: CaseStudy, rows: DataRow[]) {
     const readmeData = [
       ['STUDI KASUS ADMIN EXCEL - PORTOFOLIO'],
       ['Judul', caseStudy.title],
-      ['Role', caseStudy.role],
+      ['Bidang Admin', ROLE_PROFILES[caseStudy.role]?.label ?? caseStudy.role],
+      ['Industri', caseStudy.industry ?? '-'],
       ['Level', caseStudy.level.toUpperCase()],
       ['Versi Excel', caseStudy.excelVersion],
       ['Seed', caseStudy.seed],

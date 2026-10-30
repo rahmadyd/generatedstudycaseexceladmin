@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { GenerateRequest, Industry } from '../shared/schema';
-import { getRecommendedTaskCount, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
+import { ADMIN_ROLES, getRecommendedTaskCount, INDUSTRY_PROFILES, ROLE_PROFILES, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
 
 const DEFAULT_GENERATE_PROMPT = `You are an expert curriculum designer and administrative business analyst who designs realistic Excel case studies for administrative roles in Indonesia.
 Your job is to generate a comprehensive, realistic Excel practice case study tailored to the given specifications.
@@ -9,10 +9,12 @@ Your job is to generate a comprehensive, realistic Excel practice case study tai
 Parameters:
 - Level: {{level}} (Options: easy, middle, advance, portfolio)
 - Administrative Role: {{role}} (e.g., Admin Penjualan, Admin Gudang/Inventory, Admin HRD/Absensi, Admin Keuangan/Kasir, Admin Pengadaan/Purchasing, Sekretaris/Admin Surat)
+- Administrative Role Responsibilities: {{roleDetails}}
 - Excel Version: {{excelVersion}} (Options: "2016/2019" or "Microsoft 365")
 - Formula Reference Style: {{formulaStyle}}
 - Structured Reference @ setting: {{structuredReferenceAt}}
 - Industry/Company context: {{companyName}} (Industry: {{industry}}, Theme: {{theme}}, Target Period: {{period}})
+- Industry-specific business and dataset guidance: {{industryProfile}}
 - Task Count: {{taskCount}}
 - Language: Indonesian
 - Random Seed: {{seed}}
@@ -32,6 +34,8 @@ Parameters:
    - Must include rubric and portfolioBrief with client brief, deliverables, and a complete markdown README template.
 
 ### CRITICAL RULES:
+- The selected administrative role and industry are mandatory. The scenario, tasks, dataset columns, and enum values must all describe work in the selected role at the selected industry. Do not substitute another role or industry. Use the industry-specific vocabulary above in both the scenario and dataset; do not make a generic unrelated retail/sales case unless that is the selected industry.
+- Dataset rows will be generated from the dataset schema. Give every column a clear meaning for this role and industry. For enum columns, provide realistic values for the selected industry (for example crop/product/asset/service names appropriate to the industry), never generic unrelated products. Include enough operational columns to calculate the requested task answers.
 - Output MUST be valid JSON only matching the schema below.
 - Do NOT make fake download links! The dataset schema will be used by our code generator to create the real XLSX/CSV file.
 - Provide a clear, realistic Indonesian administrative scenario.
@@ -97,6 +101,7 @@ Current Case:
 - Title: {{title}}
 - Level: {{level}}
 - Role: {{role}}
+- Role Responsibilities: {{roleDetails}}
 - Industry: {{industry}}
 - Scenario: {{scenario}}
 - Excel Version: {{excelVersion}}
@@ -168,20 +173,27 @@ export function loadPromptTemplate(templateName: string): string {
 export function compileGeneratePrompt(req: GenerateRequest, seed: string): string {
   const template = loadPromptTemplate('generate-case.md');
 
-  const industry: Industry = req.industry && req.industry !== 'Acak'
+  const industry: Exclude<Industry, 'Acak'> = req.industry && req.industry !== 'Acak'
     ? req.industry
     : getRandomItem(SAMPLE_INDUSTRIES, seed + '-ind');
-  const taskCount = req.taskCountMode === 'manual'
-    ? req.taskCount
-    : getRecommendedTaskCount(req.level, industry);
+  const taskCount = resolveTaskCount(req, industry);
   const companyName = getRandomItem(SAMPLE_COMPANIES, seed + '-comp');
   const theme = getRandomItem(SAMPLE_THEMES, seed + '-theme');
   const period = getRandomItem(SAMPLE_PERIODS, seed + '-per');
+  const roleProfile = ROLE_PROFILES[req.role];
+  const roleOption = ADMIN_ROLES.find((item) => item.id === req.role);
+  const industryProfile = INDUSTRY_PROFILES[industry];
 
   const replacements: Record<string, string> = {
     '{{level}}': req.level,
-    '{{role}}': req.role,
+    '{{role}}': roleProfile?.label ?? req.role,
+    '{{roleDetails}}': roleProfile
+      ? `${roleProfile.label}: ${roleProfile.description}`
+      : roleOption
+        ? `${roleOption.label}: ${roleOption.desc}`
+        : req.role,
     '{{industry}}': industry,
+    '{{industryProfile}}': `${industryProfile.focus}. Contoh komoditas/produk/layanan yang sesuai: ${industryProfile.products.join(', ')}. Kategori yang sesuai: ${industryProfile.categories.join(', ')}. Gunakan hanya yang relevan.`,
     '{{excelVersion}}': req.excelVersion,
     '{{formulaStyle}}': req.formulaStyle === 'modern' ? 'Modern (structured references)' : 'Classic (cell/range references)',
     '{{structuredReferenceAt}}': req.structuredReferenceAt === false
@@ -202,10 +214,19 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
   return compiled;
 }
 
-export function resolveIndustry(industry: GenerateRequest['industry'], seed: string): Industry {
+export function resolveIndustry(industry: GenerateRequest['industry'], seed: string): Exclude<Industry, 'Acak'> {
   return industry && industry !== 'Acak'
     ? industry
     : getRandomItem(SAMPLE_INDUSTRIES, seed + '-ind');
+}
+
+export function resolveTaskCount(
+  req: Pick<GenerateRequest, 'level' | 'taskCountMode' | 'taskCount'>,
+  industry: Exclude<Industry, 'Acak'>,
+): number {
+  return req.taskCountMode === 'manual'
+    ? req.taskCount
+    : getRecommendedTaskCount(req.level, industry);
 }
 
 export function compileRegenerateTaskPrompt(params: {
@@ -224,11 +245,13 @@ export function compileRegenerateTaskPrompt(params: {
   oldInstruction: string;
 }): string {
   const template = loadPromptTemplate('regenerate-task.md');
+  const roleProfile = ROLE_PROFILES[params.role];
 
   const replacements: Record<string, string> = {
     '{{title}}': params.title,
     '{{level}}': params.level,
-    '{{role}}': params.role,
+    '{{role}}': roleProfile?.label ?? params.role,
+    '{{roleDetails}}': roleProfile ? `${roleProfile.label}: ${roleProfile.description}` : params.role,
     '{{industry}}': params.industry ?? 'Tidak ditentukan',
     '{{scenario}}': params.scenario,
     '{{excelVersion}}': params.excelVersion,

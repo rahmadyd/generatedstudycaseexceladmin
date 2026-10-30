@@ -103,6 +103,7 @@ export const CaseStudySchema = z.object({
   structuredReferenceAt: z.boolean().optional(),
   industry: IndustryEnum.optional(),
   taskCountMode: TaskCountModeEnum.optional(),
+  taskCount: z.number().min(2).max(10).optional(),
   scenario: z.string().min(10),
   tasks: z.array(TaskSchema).min(1),
   dataTraps: z.array(z.string()).default([]),

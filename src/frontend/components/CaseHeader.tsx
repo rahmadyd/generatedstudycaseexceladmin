@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Pause, RotateCcw, Share2, Check, Clock, ShieldCheck, Tag } from 'lucide-react';
 import { CaseStudy } from '@/shared/schema';
-import { LEVEL_CONFIG } from '@/shared/constants';
+import { LEVEL_CONFIG, ROLE_PROFILES } from '@/shared/constants';
 
 interface CaseHeaderProps {
   caseStudy: CaseStudy;
@@ -57,12 +57,15 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
     if (caseStudy.structuredReferenceAt !== undefined) {
       url.searchParams.set('structuredReferenceAt', String(caseStudy.structuredReferenceAt));
     }
+    if (caseStudy.taskCountMode) url.searchParams.set('taskCountMode', caseStudy.taskCountMode);
+    if (caseStudy.taskCount !== undefined) url.searchParams.set('taskCount', String(caseStudy.taskCount));
     navigator.clipboard.writeText(url.toString());
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
   const levelCfg = LEVEL_CONFIG[caseStudy.level];
+  const roleLabel = ROLE_PROFILES[caseStudy.role]?.label ?? caseStudy.role;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-200 dark:border-gray-700">
@@ -80,7 +83,7 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
             {/* Role badge */}
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 flex items-center space-x-1">
               <Tag className="w-3 h-3 text-emerald-600" />
-              <span>{caseStudy.role}</span>
+              <span>{roleLabel}</span>
             </span>
 
             {caseStudy.industry && (

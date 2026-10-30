@@ -4,6 +4,7 @@ import { CaseStudy } from '@/shared/schema';
 import { DataRow } from './dataset-generator';
 import { normalizeExcelFormulaLocale } from '@/shared/excel-formula-locale';
 import { errorEntries, formulaGuideEntries, symbolEntries } from './formula-guide-data';
+import { ROLE_PROFILES } from '@/shared/constants';
 
 export function exportSoalPDF(caseStudy: CaseStudy, previewRows: DataRow[]) {
   const doc = new jsPDF({
@@ -40,7 +41,7 @@ export function exportSoalPDF(caseStudy: CaseStudy, previewRows: DataRow[]) {
   doc.setFontSize(9);
   doc.setTextColor(90, 90, 90);
   doc.text(
-    `Level: ${caseStudy.level.toUpperCase()} | Admin: ${caseStudy.role} | Versi Excel: ${caseStudy.excelVersion} | Seed: ${caseStudy.seed}`,
+    `Level: ${caseStudy.level.toUpperCase()} | Admin: ${ROLE_PROFILES[caseStudy.role]?.label ?? caseStudy.role} | Versi Excel: ${caseStudy.excelVersion} | Seed: ${caseStudy.seed}`,
     14,
     cursorY
   );
@@ -202,7 +203,7 @@ export function exportKunciJawabanPDF(caseStudy: CaseStudy) {
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
   doc.text(
-    `Level: ${caseStudy.level.toUpperCase()} | Admin: ${caseStudy.role} | Versi Excel: ${caseStudy.excelVersion} | Seed: ${caseStudy.seed}`,
+    `Level: ${caseStudy.level.toUpperCase()} | Admin: ${ROLE_PROFILES[caseStudy.role]?.label ?? caseStudy.role} | Versi Excel: ${caseStudy.excelVersion} | Seed: ${caseStudy.seed}`,
     14,
     cursorY
   );
