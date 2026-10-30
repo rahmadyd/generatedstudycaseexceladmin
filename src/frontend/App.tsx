@@ -19,6 +19,7 @@ import { CaseStudy, GenerateRequest, Level } from '@/shared/schema';
 import { FALLBACK_CASES } from '@/backend/fallbacks';
 import { generateDatasetRows } from './utils/dataset-generator';
 import {
+  SavedSettings,
   getSavedCasesHistory,
   getSavedSettings,
   getTaskProgress,
@@ -39,6 +40,7 @@ export default function App() {
   // Modals
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [historyList, setHistoryList] = useState<CaseStudy[]>([]);
+  const [generatorSettings, setGeneratorSettings] = useState<SavedSettings>(() => getSavedSettings());
 
   // Theme
   const [darkMode, setDarkMode] = useState<boolean>(false);
@@ -61,6 +63,7 @@ export default function App() {
     // 2. History
     const savedHistory = getSavedCasesHistory();
     setHistoryList(savedHistory);
+    setGeneratorSettings(getSavedSettings());
 
     // 3. URL Params check (?seed=...)
     if (typeof window !== 'undefined') {
@@ -120,12 +123,16 @@ export default function App() {
     setErrorMsg(null);
 
     // Save form settings
-    saveLastSettings({
+    const nextSettings: SavedSettings = {
       level: req.level,
       role: req.role,
       excelVersion: req.excelVersion,
       taskCount: req.taskCount || 5,
-    });
+      formulaStyle: req.formulaStyle ?? 'classic',
+      structuredReferenceAt: req.structuredReferenceAt ?? true,
+    };
+    saveLastSettings(nextSettings);
+    setGeneratorSettings(nextSettings);
 
     try {
       const res = await fetch('/api/generate', {
@@ -252,6 +259,8 @@ export default function App() {
           initialLevel={caseStudy.level}
           initialRole={caseStudy.role}
           initialExcelVersion={caseStudy.excelVersion}
+          initialFormulaStyle={generatorSettings.formulaStyle}
+          initialStructuredReferenceAt={generatorSettings.structuredReferenceAt}
         />
 
         {/* 2. Judul + badge level + timer */}

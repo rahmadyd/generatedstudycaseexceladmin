@@ -7,6 +7,8 @@ Current Case:
 - Role: {{role}}
 - Scenario: {{scenario}}
 - Excel Version: {{excelVersion}}
+- Formula Reference Style: {{formulaStyle}}
+- Structured Reference @ setting: {{structuredReferenceAt}}
 - Formulas Recommended: {{recommendedFormulas}}
 - Formulas Forbidden: {{forbiddenFormulas}}
 - Available Dataset Columns: {{columns}}
@@ -21,6 +23,7 @@ CRITICAL RULES:
 - "answerKey": { "task": {{taskNo}}, "formula": "=...", "explanation": "..." }
 - The formula MUST NOT use any formulas in forbidden list: {{forbiddenFormulas}}!
 - Use Indonesian Excel regional notation in the formula and any formula shown in the hint: use semicolons (`;`) between function arguments and commas (`,`) for decimal values. Keep English function names and do not change commas inside quoted text.
+- Follow Formula Reference Style: Classic uses only cell/range references, not table column names. Modern uses structured references with the actual table/header names; follow the @ setting above for current-row versus whole-column references.
 
 Schema:
 ```json

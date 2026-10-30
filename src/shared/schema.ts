@@ -6,6 +6,9 @@ export type Level = z.infer<typeof LevelEnum>;
 export const ExcelVersionEnum = z.enum(['2016/2019', 'Microsoft 365']);
 export type ExcelVersion = z.infer<typeof ExcelVersionEnum>;
 
+export const FormulaStyleEnum = z.enum(['classic', 'modern']);
+export type FormulaStyle = z.infer<typeof FormulaStyleEnum>;
+
 export const TaskSchema = z.object({
   no: z.number(),
   instruction: z.string().min(3),
@@ -58,6 +61,8 @@ export const CaseStudySchema = z.object({
   level: LevelEnum,
   role: z.string().min(2),
   excelVersion: ExcelVersionEnum.default('Microsoft 365'),
+  formulaStyle: FormulaStyleEnum.optional(),
+  structuredReferenceAt: z.boolean().optional(),
   scenario: z.string().min(10),
   tasks: z.array(TaskSchema).min(1),
   dataTraps: z.array(z.string()).default([]),
@@ -73,6 +78,8 @@ export const GenerateRequestSchema = z.object({
   level: LevelEnum,
   role: z.string().min(2),
   excelVersion: ExcelVersionEnum,
+  formulaStyle: FormulaStyleEnum.optional(),
+  structuredReferenceAt: z.boolean().optional(),
   taskCount: z.number().min(2).max(10).default(5),
   seed: z.string().optional(),
 });

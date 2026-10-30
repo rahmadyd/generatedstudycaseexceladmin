@@ -47,6 +47,8 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         (parsed as Record<string, unknown>).level = req.level;
         (parsed as Record<string, unknown>).role = req.role;
         (parsed as Record<string, unknown>).excelVersion = req.excelVersion;
+        (parsed as Record<string, unknown>).formulaStyle = req.formulaStyle ?? 'classic';
+        (parsed as Record<string, unknown>).structuredReferenceAt = req.structuredReferenceAt ?? true;
         (parsed as Record<string, unknown>).createdAt = new Date().toISOString();
         (parsed as Record<string, unknown>).id = `case-${seed}`;
       }
@@ -83,6 +85,8 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     role: caseStudy.role,
     scenario: caseStudy.scenario,
     excelVersion: caseStudy.excelVersion,
+    formulaStyle: caseStudy.formulaStyle,
+    structuredReferenceAt: caseStudy.structuredReferenceAt,
     recommendedFormulas: caseStudy.formulas.recommended,
     forbiddenFormulas: caseStudy.formulas.forbidden,
     columns: caseStudy.dataset.columns.map((c) => c.name),

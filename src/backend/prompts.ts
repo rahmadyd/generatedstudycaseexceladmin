@@ -10,6 +10,8 @@ Parameters:
 - Level: {{level}} (Options: easy, middle, advance, portfolio)
 - Administrative Role: {{role}} (e.g., Admin Penjualan, Admin Gudang/Inventory, Admin HRD/Absensi, Admin Keuangan/Kasir, Admin Pengadaan/Purchasing, Sekretaris/Admin Surat)
 - Excel Version: {{excelVersion}} (Options: "2016/2019" or "Microsoft 365")
+- Formula Reference Style: {{formulaStyle}}
+- Structured Reference @ setting: {{structuredReferenceAt}}
 - Industry/Company context: {{companyName}} (Industry: {{industry}}, Theme: {{theme}}, Target Period: {{period}})
 - Task Count: {{taskCount}}
 - Language: Indonesian
@@ -35,6 +37,7 @@ Parameters:
 - Provide a clear, realistic Indonesian administrative scenario.
 - In answerKey, each formula MUST NOT use any formulas listed under forbidden.
 - Use Indonesian Excel regional notation in every formula example, hint, and answer key: use semicolons (\`;\`) between function arguments and commas (\`,\`) for decimal values. Keep English function names. For example: \`=IF(A1>0; 1,5; 0)\` and \`=SUMIFS(C:C; A:A; "Jakarta")\`. Do not change commas inside quoted text.
+- Match every formula, hint, and answer key to Formula Reference Style. Classic MUST use cell/range references (for example \`C2\`, \`$D$2:$D$100\`) and must not use structured table column names. Modern MUST use structured references with the actual table and header names (for example \`TabelData[Qty Masuk]\`); when using a row-level reference, {{structuredReferenceAt}} specifies whether to use \`[@[Nama Kolom]]\` (current row) or \`[Nama Kolom]\` (whole table column). Choose references appropriate to the operation, and do not invent columns absent from the dataset.
 - dataTraps should be an array of strings (e.g. ["Spasi berlebih pada kode barang", "Tanggal tersimpan sebagai teks"]).
 - Each task in tasks must have:
   - no: number (1, 2, ...)
@@ -96,6 +99,8 @@ Current Case:
 - Role: {{role}}
 - Scenario: {{scenario}}
 - Excel Version: {{excelVersion}}
+- Formula Reference Style: {{formulaStyle}}
+- Structured Reference @ setting: {{structuredReferenceAt}}
 - Formulas Recommended: {{recommendedFormulas}}
 - Formulas Forbidden: {{forbiddenFormulas}}
 - Available Dataset Columns: {{columns}}
@@ -110,6 +115,7 @@ CRITICAL RULES:
 - "answerKey": { "task": {{taskNo}}, "formula": "=...", "explanation": "..." }
 - The formula MUST NOT use any formulas in forbidden list: {{forbiddenFormulas}}!
 - Use Indonesian Excel regional notation in the formula and any formula shown in the hint: use semicolons (\`;\`) between function arguments and commas (\`,\`) for decimal values. Keep English function names and do not change commas inside quoted text.
+- Follow Formula Reference Style: Classic uses only cell/range references, not table column names. Modern uses structured references with the actual table/header names; follow the @ setting above for current-row versus whole-column references.
 
 Schema:
 \`\`\`json
@@ -170,6 +176,10 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
     '{{level}}': req.level,
     '{{role}}': req.role,
     '{{excelVersion}}': req.excelVersion,
+    '{{formulaStyle}}': req.formulaStyle === 'modern' ? 'Modern (structured references)' : 'Classic (cell/range references)',
+    '{{structuredReferenceAt}}': req.structuredReferenceAt === false
+      ? 'Tanpa @; gunakan referensi seluruh kolom tabel seperti TabelData[Qty Masuk]'
+      : 'Pakai @ untuk referensi baris aktif seperti [@[Qty Masuk]]',
     '{{companyName}}': companyName,
     '{{industry}}': industry,
     '{{theme}}': theme,
@@ -192,6 +202,8 @@ export function compileRegenerateTaskPrompt(params: {
   role: string;
   scenario: string;
   excelVersion: string;
+  formulaStyle?: string;
+  structuredReferenceAt?: boolean;
   recommendedFormulas: string[];
   forbiddenFormulas: string[];
   columns: string[];
@@ -206,6 +218,10 @@ export function compileRegenerateTaskPrompt(params: {
     '{{role}}': params.role,
     '{{scenario}}': params.scenario,
     '{{excelVersion}}': params.excelVersion,
+    '{{formulaStyle}}': params.formulaStyle ?? 'Classic (cell/range references)',
+    '{{structuredReferenceAt}}': params.structuredReferenceAt === false
+      ? 'Tanpa @; gunakan referensi seluruh kolom tabel'
+      : 'Pakai @ untuk referensi baris aktif',
     '{{recommendedFormulas}}': params.recommendedFormulas.join(', '),
     '{{forbiddenFormulas}}': params.forbiddenFormulas.join(', '),
     '{{columns}}': params.columns.join(', '),

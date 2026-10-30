@@ -24,7 +24,7 @@ const columnName = (index: number) => {
   return name;
 };
 
-const toStructuredFormula = (formula: string, columns: CaseStudy['dataset']['columns'], sheetName: string) => {
+const toStructuredFormula = (formula: string, columns: CaseStudy['dataset']['columns'], sheetName: string, useAt: boolean) => {
   let convertedReferences = /\[[^\]]+\]/.test(normalizeExcelFormulaLocale(formula)) ? 1 : 0;
   const headerByColumn = new Map(columns.map((column, index) => [columnName(index + 1), column.name]));
   const getHeader = (letters: string) => headerByColumn.get(letters.toUpperCase()) ?? `Kolom_${letters.toUpperCase()}`;
@@ -34,7 +34,7 @@ const toStructuredFormula = (formula: string, columns: CaseStudy['dataset']['col
     const safeName = unquotedSheet.replace(/[^A-Za-z0-9_]/g, '_').replace(/^(\d)/, '_$1');
     return `Tabel_${safeName}`;
   };
-  const structuredHeader = (name: string) => `[@[${name}]]`;
+  const structuredHeader = (name: string) => useAt ? `[@[${name}]]` : `TabelData[${name}]`;
   const converted = normalizeExcelFormulaLocale(formula)
     .replace(/((?:'[^']+'|[A-Za-z_][A-Za-z0-9_. ]*)!)\$?([A-Z]{1,3})\$?\d+:\$?([A-Z]{1,3})\$?\d+/gi, (_reference, sheet: string, startColumn: string, endColumn: string) => {
       const startName = getHeader(startColumn);
@@ -91,13 +91,14 @@ export const FormulaPracticeSection: React.FC<FormulaPracticeSectionProps> = ({ 
   const [revealed, setRevealed] = useState<number[]>([]);
 
   useEffect(() => {
+    setStyle(caseStudy.formulaStyle ?? 'classic');
     setAnswers({});
     setRevealed([]);
-  }, [caseStudy.seed]);
+  }, [caseStudy.seed, caseStudy.formulaStyle]);
 
   const solutions = useMemo(() => new Map(
-    caseStudy.answerKey.map((item) => [item.task, toStructuredFormula(item.formula, caseStudy.dataset.columns, caseStudy.dataset.sheetName)]),
-  ), [caseStudy.answerKey, caseStudy.dataset.columns, caseStudy.dataset.sheetName]);
+    caseStudy.answerKey.map((item) => [item.task, toStructuredFormula(item.formula, caseStudy.dataset.columns, caseStudy.dataset.sheetName, caseStudy.structuredReferenceAt ?? true)]),
+  ), [caseStudy.answerKey, caseStudy.dataset.columns, caseStudy.dataset.sheetName, caseStudy.structuredReferenceAt]);
 
   const toggleReveal = (taskNo: number) => {
     setRevealed((current) => current.includes(taskNo) ? current.filter((value) => value !== taskNo) : [...current, taskNo]);

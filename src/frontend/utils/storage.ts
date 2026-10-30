@@ -1,4 +1,4 @@
-import { CaseStudy, Level, ExcelVersion } from '@/shared/schema';
+import { CaseStudy, Level, ExcelVersion, FormulaStyle } from '@/shared/schema';
 
 const STORAGE_KEYS = {
   HISTORY: 'excel_admin_cases_history',
@@ -13,6 +13,8 @@ export interface SavedSettings {
   role: string;
   excelVersion: ExcelVersion;
   taskCount: number;
+  formulaStyle: FormulaStyle;
+  structuredReferenceAt: boolean;
 }
 
 export function safeGetStorage<T>(key: string, fallback: T): T {
@@ -52,12 +54,15 @@ export function saveCaseToHistory(caseStudy: CaseStudy): void {
 
 // Settings
 export function getSavedSettings(): SavedSettings {
-  return safeGetStorage<SavedSettings>(STORAGE_KEYS.SETTINGS, {
+  const defaults: SavedSettings = {
     level: 'middle',
     role: 'Penjualan',
     excelVersion: 'Microsoft 365',
     taskCount: 5,
-  });
+    formulaStyle: 'classic',
+    structuredReferenceAt: true,
+  };
+  return { ...defaults, ...safeGetStorage<Partial<SavedSettings>>(STORAGE_KEYS.SETTINGS, {}) };
 }
 
 export function saveLastSettings(settings: SavedSettings): void {

@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sparkles, Sliders, RefreshCw, AlertCircle, Info } from 'lucide-react';
-import { Level, ExcelVersion, GenerateRequest } from '@/shared/schema';
+import { Level, ExcelVersion, FormulaStyle, GenerateRequest } from '@/shared/schema';
 import { ADMIN_ROLES, LEVEL_CONFIG } from '@/shared/constants';
 
 interface GenerateFormProps {
@@ -11,6 +11,8 @@ interface GenerateFormProps {
   initialLevel?: Level | null;
   initialRole?: string;
   initialExcelVersion?: ExcelVersion;
+  initialFormulaStyle?: FormulaStyle;
+  initialStructuredReferenceAt?: boolean;
 }
 
 export const GenerateForm: React.FC<GenerateFormProps> = ({
@@ -19,14 +21,26 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   initialLevel = null,
   initialRole = 'Penjualan',
   initialExcelVersion = 'Microsoft 365',
+  initialFormulaStyle = 'classic',
+  initialStructuredReferenceAt = true,
 }) => {
   const [level, setLevel] = useState<Level | null>(initialLevel ?? null);
   const [role, setRole] = useState<string>(initialRole);
   const [excelVersion, setExcelVersion] = useState<ExcelVersion>(initialExcelVersion);
+  const [formulaStyle, setFormulaStyle] = useState<FormulaStyle>(initialFormulaStyle);
+  const [structuredReferenceAt, setStructuredReferenceAt] = useState(initialStructuredReferenceAt);
   const [taskCount, setTaskCount] = useState<number>(5);
   const [customSeed, setCustomSeed] = useState<string>('');
   const [cooldown, setCooldown] = useState<number>(0);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+
+  useEffect(() => {
+    setLevel(initialLevel ?? null);
+    setRole(initialRole);
+    setExcelVersion(initialExcelVersion);
+    setFormulaStyle(initialFormulaStyle);
+    setStructuredReferenceAt(initialStructuredReferenceAt);
+  }, [initialExcelVersion, initialFormulaStyle, initialLevel, initialRole, initialStructuredReferenceAt]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +50,8 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
       level,
       role,
       excelVersion,
+      formulaStyle,
+      structuredReferenceAt,
       taskCount,
       seed: customSeed.trim() || undefined,
     });
@@ -58,7 +74,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-200 dark:border-gray-700">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 pb-4 border-b border-gray-100 dark:border-gray-700/60">
-        <div>
+        <div className="sm:pl-3">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
             <span className="w-2.5 h-6 bg-emerald-600 rounded-full inline-block" />
             <span>1. Generator Studi Kasus Baru</span>
@@ -180,6 +196,72 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
         {showAdvanced && (
           <div className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Gaya Rumus Excel
+                </label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {(['classic', 'modern'] as FormulaStyle[]).map((style) => (
+                    <button
+                      key={style}
+                      type="button"
+                      onClick={() => setFormulaStyle(style)}
+                      aria-pressed={formulaStyle === style}
+                      className={`rounded-lg border p-3 text-left transition ${
+                        formulaStyle === style
+                          ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600/30 dark:bg-emerald-950/30'
+                          : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800'
+                      }`}
+                    >
+                      <span className="block text-xs font-bold text-gray-900 dark:text-white">
+                        {style === 'classic' ? 'Classic — alamat sel' : 'Modern — structured reference'}
+                      </span>
+                      <span className="mt-1 block text-[11px] leading-relaxed text-gray-600 dark:text-gray-400">
+                        {style === 'classic'
+                          ? 'Gunakan C2 atau $D$2:$D$100. Fokus pada range/posisi kolom, bukan nama header tabel.'
+                          : 'Gunakan nama Table dan kolom, misalnya TabelData[Qty Masuk]. Data perlu dijadikan Table (Ctrl+T).'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {formulaStyle === 'modern' && (
+                  <fieldset className="mt-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                    <legend className="px-1 text-[11px] font-semibold text-gray-700 dark:text-gray-300">
+                      Structured reference baris
+                    </legend>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <label className="flex cursor-pointer items-start gap-2 rounded-lg p-2 hover:bg-white dark:hover:bg-gray-800">
+                        <input
+                          type="radio"
+                          name="structured-reference-at"
+                          checked={structuredReferenceAt}
+                          onChange={() => setStructuredReferenceAt(true)}
+                          className="mt-0.5 accent-emerald-600"
+                        />
+                        <span className="text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
+                          <strong>Pakai @</strong> — baris aktif, contoh <code>[@[Stok Awal]]</code>
+                        </span>
+                      </label>
+                      <label className="flex cursor-pointer items-start gap-2 rounded-lg p-2 hover:bg-white dark:hover:bg-gray-800">
+                        <input
+                          type="radio"
+                          name="structured-reference-at"
+                          checked={!structuredReferenceAt}
+                          onChange={() => setStructuredReferenceAt(false)}
+                          className="mt-0.5 accent-emerald-600"
+                        />
+                        <span className="text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
+                          <strong>Tanpa @</strong> — seluruh kolom, contoh <code>TabelData[Qty Masuk]</code>
+                        </span>
+                      </label>
+                    </div>
+                    <p className="mt-1 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
+                      @ dipakai untuk nilai di baris yang sama; tanpa @ mengacu ke seluruh kolom dan biasanya dipakai untuk agregasi.
+                    </p>
+                  </fieldset>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Jumlah Tugas
