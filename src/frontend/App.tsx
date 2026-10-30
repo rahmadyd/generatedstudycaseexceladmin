@@ -9,6 +9,7 @@ import { ScenarioSection } from './components/ScenarioSection';
 import { DatasetSection } from './components/DatasetSection';
 import { TasksSection } from './components/TasksSection';
 import { FormulaClues } from './components/FormulaClues';
+import { FormulaPracticeSection } from './components/FormulaPracticeSection';
 import { AnswerKeySection } from './components/AnswerKeySection';
 import { PortfolioSection } from './components/PortfolioSection';
 import { PDFExportSection } from './components/PDFExportSection';
@@ -273,6 +274,9 @@ export default function App() {
 
         {/* 6. Clue rumus */}
         <FormulaClues formulas={caseStudy.formulas} />
+
+        {/* 6a. Latihan rumus Classic dan Modern */}
+        <FormulaPracticeSection caseStudy={caseStudy} />
 
         {/* Mode Portofolio (Khusus Level Portofolio) */}
         {caseStudy.level === 'portfolio' && (

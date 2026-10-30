@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { CaseStudy } from '@/shared/schema';
 import { DataRow } from './dataset-generator';
 import { normalizeExcelFormulaLocale } from '@/shared/excel-formula-locale';
+import { errorEntries, formulaGuideEntries, symbolEntries } from './formula-guide-data';
 
 export function exportSoalPDF(caseStudy: CaseStudy, previewRows: DataRow[]) {
   const doc = new jsPDF({
@@ -263,4 +264,83 @@ export function exportKunciJawabanPDF(caseStudy: CaseStudy) {
 
   const safeTitle = caseStudy.title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
   doc.save(`Kunci_Jawaban_${safeTitle}_${caseStudy.seed}.pdf`);
+}
+
+export function exportFormulaGuidePDF(separator: ';' | ',') {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const formatFormula = (formula: string) => separator === ',' ? formula.replace(/;/g, ',') : formula;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(20, 83, 45);
+  doc.text('KAMUS SIMBOL, RUMUS, DAN ERROR EXCEL', 12, 12);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(90, 90, 90);
+  doc.text(`Pemisah argumen contoh: ${separator} | Referensi statis untuk belajar Excel`, 12, 18);
+
+  autoTable(doc, {
+    startY: 23,
+    head: [['Simbol', 'Keterangan', 'Contoh']],
+    body: symbolEntries.map((entry) => [entry.title, entry.description, formatFormula(entry.example)]),
+    theme: 'grid',
+    headStyles: { fillColor: [22, 101, 52], textColor: 255, fontStyle: 'bold' },
+    columnStyles: { 0: { cellWidth: 42, fontStyle: 'bold' }, 1: { cellWidth: 120 }, 2: { cellWidth: 105, font: 'courier' } },
+    styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
+    margin: { left: 12, right: 12 },
+  });
+
+  doc.addPage();
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(20, 83, 45);
+  doc.text('DAFTAR FUNGSI EXCEL', 12, 12);
+  autoTable(doc, {
+    startY: 18,
+    head: [['Kategori / Fungsi', 'Kegunaan dan sintaks / argumen', 'Classic', 'Modern', 'Hasil, kesalahan umum, versi']],
+    body: formulaGuideEntries.map((entry) => [
+      `${entry.category} - ${entry.name}`,
+      `${entry.purpose}\nSintaks: ${formatFormula(entry.syntax)}\nArgumen: ${entry.arguments}`,
+      formatFormula(entry.classic),
+      entry.modern ? formatFormula(entry.modern) : '-',
+      `Hasil: ${entry.result}\nKesalahan: ${entry.commonError}\nVersi: ${entry.version}`,
+    ]),
+    theme: 'grid',
+    headStyles: { fillColor: [22, 101, 52], textColor: 255, fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 34, fontStyle: 'bold' },
+      1: { cellWidth: 76 },
+      2: { cellWidth: 47, font: 'courier' },
+      3: { cellWidth: 47, font: 'courier' },
+      4: { cellWidth: 63 },
+    },
+    styles: { fontSize: 6.8, cellPadding: 1.8, overflow: 'linebreak' },
+    margin: { left: 12, right: 12 },
+  });
+
+  doc.addPage();
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(20, 83, 45);
+  doc.text('PANDUAN ERROR EXCEL', 12, 12);
+  autoTable(doc, {
+    startY: 18,
+    head: [['Error / pesan', 'Arti dan penyebab umum', 'Contoh / cara memperbaiki']],
+    body: errorEntries.map((entry) => [entry.title, entry.description, formatFormula(entry.example)]),
+    theme: 'grid',
+    headStyles: { fillColor: [180, 83, 9], textColor: 255, fontStyle: 'bold' },
+    columnStyles: { 0: { cellWidth: 58, fontStyle: 'bold' }, 1: { cellWidth: 108 }, 2: { cellWidth: 101, font: 'courier' } },
+    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
+    margin: { left: 12, right: 12 },
+  });
+
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page++) {
+    doc.setPage(page);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text(`Kamus Rumus Excel | Halaman ${page} dari ${pageCount}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 7, { align: 'center' });
+  }
+  doc.save('Kamus_Simbol_Rumus_dan_Error_Excel.pdf');
 }
