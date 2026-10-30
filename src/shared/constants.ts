@@ -1,4 +1,4 @@
-import { Level, ExcelVersion } from './schema';
+import { INDUSTRY_OPTIONS, Industry, Level, ExcelVersion } from './schema';
 
 export const ADMIN_ROLES = [
   { id: 'Penjualan', label: 'Admin Penjualan', desc: 'Rekap order, omset, komisi sales, piutang customer' },
@@ -46,18 +46,34 @@ export const LEVEL_CONFIG: Record<
 
 export const M365_ONLY_FORMULAS = ['XLOOKUP', 'FILTER', 'UNIQUE', 'SORTBY', 'LET', 'LAMBDA', 'XMATCH', 'SEQUENCE'];
 
-export const SAMPLE_INDUSTRIES = [
-  'Distributor Farmasi & Alkes',
-  'Retail Supermarket Bahan Segar',
-  'Logistik & Ekspedisi Antar-Kota',
-  'Pabrik Manufaktur Makanan Ringan',
-  'Agensi Digital & Pengadaan Event',
-  'Jasa Konstruksi & Interior Kantor',
-  'Dealer Suku Cadang Otomotif',
-  'Perusahaan Ekspor-Impor Tekstil',
-  'Klinik & Laboratorium Medis',
-  'Franchise Restoran & Kafe Cepat Saji',
-];
+export const SAMPLE_INDUSTRIES = INDUSTRY_OPTIONS;
+
+const MULTI_PROCESS_INDUSTRIES = new Set<Industry>([
+  'Kelapa sawit',
+  'Pertambangan batu bara',
+  'Perkebunan',
+  'Perikanan',
+  'Peternakan',
+  'Pertanian dan pangan',
+  'Kehutanan dan kayu',
+  'Manufaktur',
+  'Konstruksi',
+  'Logistik dan ekspedisi',
+  'Distribusi dan perdagangan',
+  'Retail dan minimarket',
+  'E-commerce',
+  'Perbankan',
+  'Leasing',
+  'Asuransi',
+  'Kesehatan: rumah sakit, klinik, apotek',
+  'Energi dan listrik',
+]);
+
+export function getRecommendedTaskCount(level: Level, industry: Industry): number {
+  if (level === 'advance' || level === 'portfolio') return 6;
+  if (level === 'easy') return MULTI_PROCESS_INDUSTRIES.has(industry) ? 5 : 4;
+  return MULTI_PROCESS_INDUSTRIES.has(industry) ? 6 : 5;
+}
 
 export const SAMPLE_COMPANIES = [
   'PT Mitra Sentosa Sejahtera',

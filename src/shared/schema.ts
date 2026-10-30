@@ -9,6 +9,44 @@ export type ExcelVersion = z.infer<typeof ExcelVersionEnum>;
 export const FormulaStyleEnum = z.enum(['classic', 'modern']);
 export type FormulaStyle = z.infer<typeof FormulaStyleEnum>;
 
+export const INDUSTRY_OPTIONS = [
+  'Kelapa sawit',
+  'Karet',
+  'Kopi',
+  'Pertambangan batu bara',
+  'Perkebunan',
+  'Perikanan',
+  'Peternakan',
+  'Pertanian dan pangan',
+  'Kehutanan dan kayu',
+  'Otomotif dan bengkel',
+  'Manufaktur',
+  'Konstruksi',
+  'Properti dan real estate',
+  'Logistik dan ekspedisi',
+  'Distribusi dan perdagangan',
+  'Retail dan minimarket',
+  'E-commerce',
+  'Perbankan',
+  'Leasing',
+  'Asuransi',
+  'Akuntansi dan keuangan',
+  'Kesehatan: rumah sakit, klinik, apotek',
+  'Pendidikan: sekolah dan kampus',
+  'Pemerintahan dan kantor dinas',
+  'Perhotelan dan pariwisata',
+  'Restoran dan kafe (F&B)',
+  'Telekomunikasi',
+  'Energi dan listrik',
+  'Percetakan dan advertising',
+  'Konsultan dan jasa profesional',
+] as const;
+export const IndustryEnum = z.enum(['Acak', ...INDUSTRY_OPTIONS]);
+export type Industry = z.infer<typeof IndustryEnum>;
+
+export const TaskCountModeEnum = z.enum(['auto', 'manual']);
+export type TaskCountMode = z.infer<typeof TaskCountModeEnum>;
+
 export const TaskSchema = z.object({
   no: z.number(),
   instruction: z.string().min(3),
@@ -63,6 +101,8 @@ export const CaseStudySchema = z.object({
   excelVersion: ExcelVersionEnum.default('Microsoft 365'),
   formulaStyle: FormulaStyleEnum.optional(),
   structuredReferenceAt: z.boolean().optional(),
+  industry: IndustryEnum.optional(),
+  taskCountMode: TaskCountModeEnum.optional(),
   scenario: z.string().min(10),
   tasks: z.array(TaskSchema).min(1),
   dataTraps: z.array(z.string()).default([]),
@@ -80,6 +120,8 @@ export const GenerateRequestSchema = z.object({
   excelVersion: ExcelVersionEnum,
   formulaStyle: FormulaStyleEnum.optional(),
   structuredReferenceAt: z.boolean().optional(),
+  industry: IndustryEnum.optional(),
+  taskCountMode: TaskCountModeEnum.default('auto'),
   taskCount: z.number().min(2).max(10).default(5),
   seed: z.string().optional(),
 });

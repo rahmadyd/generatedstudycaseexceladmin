@@ -15,7 +15,7 @@ import { PortfolioSection } from './components/PortfolioSection';
 import { PDFExportSection } from './components/PDFExportSection';
 import { HistoryModal } from './components/HistoryModal';
 
-import { CaseStudy, GenerateRequest, Level } from '@/shared/schema';
+import { CaseStudy, GenerateRequest, INDUSTRY_OPTIONS, Level } from '@/shared/schema';
 import { FALLBACK_CASES } from '@/backend/fallbacks';
 import { generateDatasetRows } from './utils/dataset-generator';
 import {
@@ -71,6 +71,9 @@ export default function App() {
       const urlSeed = params.get('seed');
       const urlLevel = (params.get('level') as Level) || null;
       const urlRole = params.get('role') || null;
+      const urlIndustry = params.get('industry');
+      const urlFormulaStyle = params.get('formulaStyle');
+      const urlStructuredReferenceAt = params.get('structuredReferenceAt');
 
       if (urlSeed) {
         // If matches history item
@@ -86,6 +89,12 @@ export default function App() {
           level: urlLevel || 'middle',
           role: urlRole || 'Penjualan',
           excelVersion: 'Microsoft 365',
+          industry: urlIndustry === 'Acak' || INDUSTRY_OPTIONS.includes(urlIndustry as (typeof INDUSTRY_OPTIONS)[number])
+            ? urlIndustry as GenerateRequest['industry']
+            : 'Acak',
+          formulaStyle: urlFormulaStyle === 'modern' ? 'modern' : 'classic',
+          structuredReferenceAt: urlStructuredReferenceAt !== 'false',
+          taskCountMode: 'auto',
           taskCount: 5,
           seed: urlSeed,
         });
@@ -130,6 +139,8 @@ export default function App() {
       taskCount: req.taskCount || 5,
       formulaStyle: req.formulaStyle ?? 'classic',
       structuredReferenceAt: req.structuredReferenceAt ?? true,
+      industry: req.industry ?? 'Acak',
+      taskCountMode: req.taskCountMode ?? 'auto',
     };
     saveLastSettings(nextSettings);
     setGeneratorSettings(nextSettings);
@@ -261,6 +272,9 @@ export default function App() {
           initialExcelVersion={caseStudy.excelVersion}
           initialFormulaStyle={generatorSettings.formulaStyle}
           initialStructuredReferenceAt={generatorSettings.structuredReferenceAt}
+          initialIndustry={generatorSettings.industry}
+          initialTaskCount={generatorSettings.taskCount}
+          initialTaskCountMode={generatorSettings.taskCountMode}
         />
 
         {/* 2. Judul + badge level + timer */}

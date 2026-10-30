@@ -1,4 +1,4 @@
-import { CaseStudy, Level, ExcelVersion, FormulaStyle } from '@/shared/schema';
+import { CaseStudy, Level, ExcelVersion, FormulaStyle, Industry, TaskCountMode } from '@/shared/schema';
 
 const STORAGE_KEYS = {
   HISTORY: 'excel_admin_cases_history',
@@ -15,6 +15,8 @@ export interface SavedSettings {
   taskCount: number;
   formulaStyle: FormulaStyle;
   structuredReferenceAt: boolean;
+  industry: Industry;
+  taskCountMode: TaskCountMode;
 }
 
 export function safeGetStorage<T>(key: string, fallback: T): T {
@@ -61,6 +63,8 @@ export function getSavedSettings(): SavedSettings {
     taskCount: 5,
     formulaStyle: 'classic',
     structuredReferenceAt: true,
+    industry: 'Acak',
+    taskCountMode: 'auto',
   };
   return { ...defaults, ...safeGetStorage<Partial<SavedSettings>>(STORAGE_KEYS.SETTINGS, {}) };
 }

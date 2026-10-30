@@ -40,11 +40,13 @@ export function exportSoalPDF(caseStudy: CaseStudy, previewRows: DataRow[]) {
   doc.setFontSize(9);
   doc.setTextColor(90, 90, 90);
   doc.text(
-    `Level: ${caseStudy.level.toUpperCase()} | Role: ${caseStudy.role} | Versi Excel: ${caseStudy.excelVersion} | Seed: ${caseStudy.seed}`,
+    `Level: ${caseStudy.level.toUpperCase()} | Admin: ${caseStudy.role} | Versi Excel: ${caseStudy.excelVersion} | Seed: ${caseStudy.seed}`,
     14,
     cursorY
   );
-  cursorY += 10;
+  cursorY += 6;
+  doc.text(`Industri: ${caseStudy.industry ?? '-'}`, 14, cursorY);
+  cursorY += 8;
 
   // 1. Skenario
   doc.setFont('helvetica', 'bold');
@@ -200,11 +202,13 @@ export function exportKunciJawabanPDF(caseStudy: CaseStudy) {
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
   doc.text(
-    `Level: ${caseStudy.level.toUpperCase()} | Role: ${caseStudy.role} | Versi Excel: ${caseStudy.excelVersion} | Seed: ${caseStudy.seed}`,
+    `Level: ${caseStudy.level.toUpperCase()} | Admin: ${caseStudy.role} | Versi Excel: ${caseStudy.excelVersion} | Seed: ${caseStudy.seed}`,
     14,
     cursorY
   );
-  cursorY += 10;
+  cursorY += 6;
+  doc.text(`Industri: ${caseStudy.industry ?? '-'}`, 14, cursorY);
+  cursorY += 8;
 
   // Warning banner
   doc.setFillColor(254, 243, 199);

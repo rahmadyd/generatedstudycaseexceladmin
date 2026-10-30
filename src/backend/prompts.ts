@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { GenerateRequest } from '../shared/schema';
-import { SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
+import { GenerateRequest, Industry } from '../shared/schema';
+import { getRecommendedTaskCount, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
 
 const DEFAULT_GENERATE_PROMPT = `You are an expert curriculum designer and administrative business analyst who designs realistic Excel case studies for administrative roles in Indonesia.
 Your job is to generate a comprehensive, realistic Excel practice case study tailored to the given specifications.
@@ -97,6 +97,7 @@ Current Case:
 - Title: {{title}}
 - Level: {{level}}
 - Role: {{role}}
+- Industry: {{industry}}
 - Scenario: {{scenario}}
 - Excel Version: {{excelVersion}}
 - Formula Reference Style: {{formulaStyle}}
@@ -135,7 +136,7 @@ Schema:
 \`\`\`
 Return ONLY JSON without any markdown code fences.`;
 
-function getRandomItem<T>(arr: T[], seedStr?: string): T {
+function getRandomItem<T>(arr: readonly T[], seedStr?: string): T {
   if (!seedStr) {
     return arr[Math.floor(Math.random() * arr.length)];
   }
@@ -167,7 +168,12 @@ export function loadPromptTemplate(templateName: string): string {
 export function compileGeneratePrompt(req: GenerateRequest, seed: string): string {
   const template = loadPromptTemplate('generate-case.md');
 
-  const industry = getRandomItem(SAMPLE_INDUSTRIES, seed + '-ind');
+  const industry: Industry = req.industry && req.industry !== 'Acak'
+    ? req.industry
+    : getRandomItem(SAMPLE_INDUSTRIES, seed + '-ind');
+  const taskCount = req.taskCountMode === 'manual'
+    ? req.taskCount
+    : getRecommendedTaskCount(req.level, industry);
   const companyName = getRandomItem(SAMPLE_COMPANIES, seed + '-comp');
   const theme = getRandomItem(SAMPLE_THEMES, seed + '-theme');
   const period = getRandomItem(SAMPLE_PERIODS, seed + '-per');
@@ -175,16 +181,16 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
   const replacements: Record<string, string> = {
     '{{level}}': req.level,
     '{{role}}': req.role,
+    '{{industry}}': industry,
     '{{excelVersion}}': req.excelVersion,
     '{{formulaStyle}}': req.formulaStyle === 'modern' ? 'Modern (structured references)' : 'Classic (cell/range references)',
     '{{structuredReferenceAt}}': req.structuredReferenceAt === false
       ? 'Tanpa @; gunakan referensi seluruh kolom tabel seperti TabelData[Qty Masuk]'
       : 'Pakai @ untuk referensi baris aktif seperti [@[Qty Masuk]]',
     '{{companyName}}': companyName,
-    '{{industry}}': industry,
     '{{theme}}': theme,
     '{{period}}': period,
-    '{{taskCount}}': String(req.taskCount || 5),
+    '{{taskCount}}': String(taskCount || 5),
     '{{seed}}': seed,
   };
 
@@ -196,10 +202,17 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
   return compiled;
 }
 
+export function resolveIndustry(industry: GenerateRequest['industry'], seed: string): Industry {
+  return industry && industry !== 'Acak'
+    ? industry
+    : getRandomItem(SAMPLE_INDUSTRIES, seed + '-ind');
+}
+
 export function compileRegenerateTaskPrompt(params: {
   title: string;
   level: string;
   role: string;
+  industry?: string;
   scenario: string;
   excelVersion: string;
   formulaStyle?: string;
@@ -216,6 +229,7 @@ export function compileRegenerateTaskPrompt(params: {
     '{{title}}': params.title,
     '{{level}}': params.level,
     '{{role}}': params.role,
+    '{{industry}}': params.industry ?? 'Tidak ditentukan',
     '{{scenario}}': params.scenario,
     '{{excelVersion}}': params.excelVersion,
     '{{formulaStyle}}': params.formulaStyle ?? 'Classic (cell/range references)',

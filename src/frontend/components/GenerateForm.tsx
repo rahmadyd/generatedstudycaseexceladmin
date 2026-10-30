@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { Sparkles, Sliders, RefreshCw, AlertCircle, Info } from 'lucide-react';
-import { Level, ExcelVersion, FormulaStyle, GenerateRequest } from '@/shared/schema';
-import { ADMIN_ROLES, LEVEL_CONFIG } from '@/shared/constants';
+import { Level, ExcelVersion, FormulaStyle, GenerateRequest, INDUSTRY_OPTIONS, Industry, TaskCountMode } from '@/shared/schema';
+import { ADMIN_ROLES, getRecommendedTaskCount, LEVEL_CONFIG } from '@/shared/constants';
 
 interface GenerateFormProps {
   onGenerate: (req: GenerateRequest) => Promise<void>;
@@ -13,6 +13,9 @@ interface GenerateFormProps {
   initialExcelVersion?: ExcelVersion;
   initialFormulaStyle?: FormulaStyle;
   initialStructuredReferenceAt?: boolean;
+  initialIndustry?: Industry;
+  initialTaskCount?: number;
+  initialTaskCountMode?: TaskCountMode;
 }
 
 export const GenerateForm: React.FC<GenerateFormProps> = ({
@@ -23,14 +26,18 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   initialExcelVersion = 'Microsoft 365',
   initialFormulaStyle = 'classic',
   initialStructuredReferenceAt = true,
+  initialIndustry = 'Acak',
+  initialTaskCount = 5,
+  initialTaskCountMode = 'auto',
 }) => {
   const [level, setLevel] = useState<Level | null>(initialLevel ?? null);
   const [role, setRole] = useState<string>(initialRole);
   const [excelVersion, setExcelVersion] = useState<ExcelVersion>(initialExcelVersion);
   const [formulaStyle, setFormulaStyle] = useState<FormulaStyle>(initialFormulaStyle);
   const [structuredReferenceAt, setStructuredReferenceAt] = useState(initialStructuredReferenceAt);
-  const [taskCount, setTaskCount] = useState<number>(5);
-  const [customSeed, setCustomSeed] = useState<string>('');
+  const [industry, setIndustry] = useState<Industry>(initialIndustry);
+  const [taskCount, setTaskCount] = useState<number>(initialTaskCount);
+  const [taskCountMode, setTaskCountMode] = useState<TaskCountMode>(initialTaskCountMode);
   const [cooldown, setCooldown] = useState<number>(0);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
@@ -40,7 +47,15 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
     setExcelVersion(initialExcelVersion);
     setFormulaStyle(initialFormulaStyle);
     setStructuredReferenceAt(initialStructuredReferenceAt);
-  }, [initialExcelVersion, initialFormulaStyle, initialLevel, initialRole, initialStructuredReferenceAt]);
+    setIndustry(initialIndustry);
+    setTaskCount(initialTaskCount);
+    setTaskCountMode(initialTaskCountMode);
+  }, [initialExcelVersion, initialFormulaStyle, initialIndustry, initialLevel, initialRole, initialStructuredReferenceAt, initialTaskCount, initialTaskCountMode]);
+
+  const recommendedTaskCount = level
+    ? getRecommendedTaskCount(level, industry)
+    : 5;
+  const effectiveTaskCount = taskCountMode === 'auto' ? recommendedTaskCount : taskCount;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,8 +67,9 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
       excelVersion,
       formulaStyle,
       structuredReferenceAt,
-      taskCount,
-      seed: customSeed.trim() || undefined,
+      industry,
+      taskCount: effectiveTaskCount,
+      taskCountMode,
     });
 
     // 5-second cooldown to avoid accidental spam
@@ -89,7 +105,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
           className="mt-3 sm:mt-0 flex items-center space-x-1.5 text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
         >
           <Sliders className="w-3.5 h-3.5" />
-          <span>{showAdvanced ? 'Tutup Opsi Tambahan' : 'Opsi Tambahan (Seed/Jumlah)'}</span>
+          <span>{showAdvanced ? 'Tutup Opsi Tambahan' : 'Opsi Tambahan (Format Rumus)'}</span>
         </button>
       </div>
 
@@ -145,12 +161,11 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
           )}
         </div>
 
-        {/* Row 2: Role & Excel Version */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* Bidang Admin */}
           <div>
             <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1.5">
-              Bidang Admin
+              Bidang Admin (Jenis Pekerjaan)
             </label>
             <select
               value={role}
@@ -163,8 +178,32 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
                 </option>
               ))}
             </select>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+              Menentukan tugas yang dikerjakan, misalnya rekap penjualan atau stok gudang.
+            </p>
           </div>
 
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1.5">
+              Industri
+            </label>
+            <select
+              value={industry}
+              onChange={(event) => setIndustry(event.target.value as Industry)}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            >
+              <option value="Acak">Acak (pilihkan otomatis)</option>
+              {INDUSTRY_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+              Menentukan konteks perusahaan dan dataset. Admin tetap menentukan jenis tugasnya.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* Versi Excel */}
           <div>
             <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1.5">
@@ -195,7 +234,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
         {/* Advanced Options Accordion */}
         {showAdvanced && (
           <div className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <div className="sm:col-span-2">
                 <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
                   Gaya Rumus Excel
@@ -267,32 +306,32 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
                   Jumlah Tugas
                 </label>
                 <select
-                  value={taskCount}
-                  onChange={(e) => setTaskCount(Number(e.target.value))}
+                  value={taskCountMode === 'auto' ? 'auto' : String(taskCount)}
+                  onChange={(event) => {
+                    if (event.target.value === 'auto') {
+                      setTaskCountMode('auto');
+                    } else {
+                      setTaskCount(Number(event.target.value));
+                      setTaskCountMode('manual');
+                    }
+                  }}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
                 >
+                  <option value="auto">
+                    Otomatis — {industry === 'Acak' ? '4–6 tugas sesuai industri' : `${recommendedTaskCount} tugas (rekomendasi)`}
+                  </option>
                   <option value={3}>3 Tugas (Cepat / Mini Case)</option>
                   <option value={4}>4 Tugas</option>
                   <option value={5}>5 Tugas (Standar)</option>
                   <option value={6}>6 Tugas (Mendalam)</option>
                 </select>
+                <p className="mt-1.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
+                  {taskCountMode === 'auto'
+                    ? 'Otomatis menyesuaikan tingkat kesulitan dan kompleksitas industri: umumnya 4 tugas untuk Easy, 5 untuk Middle, dan 6 untuk Advance/Portofolio. Industri dengan banyak proses mendapat tugas tambahan.'
+                    : `Jumlah manual dipilih: ${taskCount} tugas. Pilih Otomatis jika ingin menyesuaikan lagi dengan industri dan level.`}
+                </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Custom Seed (Opsional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Contoh: case-mar-01"
-                  value={customSeed}
-                  onChange={(e) => setCustomSeed(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-                />
-                <span className="text-[10px] text-gray-500">
-                  Seed identik akan menghasilkan dataset & soal yang konsisten.
-                </span>
-              </div>
             </div>
           </div>
         )}

@@ -1,7 +1,7 @@
 // Backend services for generating and regenerating case studies
 import { CaseStudy, GenerateRequest, RegenerateTaskRequest, Task } from '../shared/schema';
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
-import { compileGeneratePrompt, compileRegenerateTaskPrompt } from './prompts';
+import { compileGeneratePrompt, compileRegenerateTaskPrompt, resolveIndustry } from './prompts';
 import { callGroqChat } from './groq';
 import { validateAndSanitizeCaseStudy } from './validator';
 
@@ -47,6 +47,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         (parsed as Record<string, unknown>).level = req.level;
         (parsed as Record<string, unknown>).role = req.role;
         (parsed as Record<string, unknown>).excelVersion = req.excelVersion;
+        (parsed as Record<string, unknown>).industry = resolveIndustry(req.industry, seed);
         (parsed as Record<string, unknown>).formulaStyle = req.formulaStyle ?? 'classic';
         (parsed as Record<string, unknown>).structuredReferenceAt = req.structuredReferenceAt ?? true;
         (parsed as Record<string, unknown>).createdAt = new Date().toISOString();
@@ -85,6 +86,7 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     role: caseStudy.role,
     scenario: caseStudy.scenario,
     excelVersion: caseStudy.excelVersion,
+    industry: caseStudy.industry ?? 'Tidak ditentukan',
     formulaStyle: caseStudy.formulaStyle,
     structuredReferenceAt: caseStudy.structuredReferenceAt,
     recommendedFormulas: caseStudy.formulas.recommended,

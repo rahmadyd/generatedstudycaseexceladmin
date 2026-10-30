@@ -52,6 +52,11 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
     url.searchParams.set('level', caseStudy.level);
     url.searchParams.set('role', caseStudy.role);
     url.searchParams.set('excelVersion', caseStudy.excelVersion);
+    if (caseStudy.industry) url.searchParams.set('industry', caseStudy.industry);
+    if (caseStudy.formulaStyle) url.searchParams.set('formulaStyle', caseStudy.formulaStyle);
+    if (caseStudy.structuredReferenceAt !== undefined) {
+      url.searchParams.set('structuredReferenceAt', String(caseStudy.structuredReferenceAt));
+    }
     navigator.clipboard.writeText(url.toString());
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
@@ -77,6 +82,12 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
               <Tag className="w-3 h-3 text-emerald-600" />
               <span>{caseStudy.role}</span>
             </span>
+
+            {caseStudy.industry && (
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900">
+                Industri: {caseStudy.industry}
+              </span>
+            )}
 
             {/* Excel version badge */}
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center space-x-1">

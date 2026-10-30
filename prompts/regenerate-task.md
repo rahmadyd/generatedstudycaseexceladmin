@@ -5,6 +5,7 @@ Current Case:
 - Title: {{title}}
 - Level: {{level}}
 - Role: {{role}}
+- Industry: {{industry}}
 - Scenario: {{scenario}}
 - Excel Version: {{excelVersion}}
 - Formula Reference Style: {{formulaStyle}}
