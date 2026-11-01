@@ -69,7 +69,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
   });
 
   // Fallback only to a second model if explicitly configured and different.
-  if (!response.ok && model === defaultModel && fallbackModel !== defaultModel) {
+  if (!response.ok && response.status !== 429 && model === defaultModel && fallbackModel !== defaultModel) {
     activeModel = fallbackModel;
     response = await fetch(endpoint, {
       method: 'POST',
@@ -84,8 +84,11 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
   if (!response.ok) {
     const errorBody = await response.text();
     let parsedMsg = errorBody;
+    let providerCode = '';
     try {
-      parsedMsg = JSON.parse(errorBody)?.error?.message || errorBody;
+      const providerError = JSON.parse(errorBody)?.error;
+      parsedMsg = providerError?.message || errorBody;
+      providerCode = providerError?.code || providerError?.type || '';
     } catch {}
 
     if (
@@ -97,8 +100,16 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     }
 
     if (response.status === 429) {
+      const limitDetails = [
+        providerCode && `kode: ${providerCode}`,
+        response.headers.get('retry-after') && `coba lagi dalam ${response.headers.get('retry-after')} detik`,
+        response.headers.get('x-ratelimit-reset-requests') &&
+          `reset request: ${response.headers.get('x-ratelimit-reset-requests')}`,
+        response.headers.get('x-ratelimit-reset-tokens') &&
+          `reset token: ${response.headers.get('x-ratelimit-reset-tokens')}`,
+      ].filter(Boolean);
       throw new Error(
-        'Groq menolak permintaan dengan 429 (rate limit/kuota). Periksa limit dan pemakaian API key pada akun Groq yang terhubung di Vercel.'
+        `Groq mengembalikan 429: ${parsedMsg}${limitDetails.length ? ` (${limitDetails.join('; ')})` : ''}`
       );
     }
     if (response.status === 401) {

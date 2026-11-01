@@ -94,8 +94,13 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
     } catch (err) {
       lastError = err;
       const msg = (err as Error).message || '';
-      // Langsung lempar error autentikasi — tidak perlu retry
-      if (msg.includes('401') || msg.includes('tidak valid') || msg.includes('tidak ditemukan')) {
+      // Provider rejections won't improve by retrying and may worsen rate limits.
+      if (
+        msg.includes('429') ||
+        msg.includes('401') ||
+        msg.includes('tidak valid') ||
+        msg.includes('tidak ditemukan')
+      ) {
         throw err;
       }
     }
