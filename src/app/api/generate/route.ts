@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GenerateRequestSchema } from '@/shared/schema';
 import { generateCaseStudyService } from '@/backend/task-service';
-import { checkRateLimit } from '@/backend/rate-limit';
-import { GENERATION_CONFIG } from '@/shared/generation-config';
+import { checkMinimumInterval, checkRateLimit } from '@/backend/rate-limit';
+import { GroqApiError } from '@/backend/ai-client';
+import {
+  GENERATION_CONFIG,
+  GENERATION_MIN_INTERVAL_MS,
+  GENERATION_RATE_LIMIT_REQUESTS,
+  GENERATION_RATE_LIMIT_WINDOW_MS,
+  GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
+} from '@/shared/generation-config';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -10,11 +17,25 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
-    const rateCheck = checkRateLimit(ip, 15, 60000);
+    const cooldownCheck = checkMinimumInterval(`generate:${ip}`, GENERATION_MIN_INTERVAL_MS);
+    if (!cooldownCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: 'Permintaan terlalu cepat. Silakan tunggu sebelum mencoba lagi.',
+          code: 'RATE_LIMITED',
+          retryAfterSeconds: cooldownCheck.retryAfterSec ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
+        },
+        { status: 429 },
+      );
+    }
+
+    const rateCheck = checkRateLimit(ip, GENERATION_RATE_LIMIT_REQUESTS, GENERATION_RATE_LIMIT_WINDOW_MS);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
           error: `Terlalu banyak permintaan generate. Silakan tunggu ${rateCheck.retryAfterSec} detik sebelum mencoba lagi.`,
+          code: 'RATE_LIMITED',
+          retryAfterSeconds: rateCheck.retryAfterSec ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
         },
         { status: 429 }
       );
@@ -48,6 +69,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, caseStudy });
   } catch (error) {
     console.error('API /api/generate error:', error);
+    if (error instanceof GroqApiError && error.status === 429) {
+      return NextResponse.json(
+        {
+          error: 'Batas penggunaan AI tercapai. Coba lagi setelah batas Groq direset.',
+          code: 'RATE_LIMITED',
+          retryAfterSeconds: error.retryAfterSeconds ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
+        },
+        { status: 429 },
+      );
+    }
     const message = (error as Error).message || 'Terjadi kesalahan internal server saat generate soal.';
     return NextResponse.json({ error: message }, { status: 500 });
   }

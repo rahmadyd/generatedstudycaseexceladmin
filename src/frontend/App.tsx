@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { GenerateForm } from './components/GenerateForm';
 import { StickyNav } from './components/StickyNav';
@@ -16,6 +16,7 @@ import { HistoryModal } from './components/HistoryModal';
 import { CaseStudy, GenerateRequest } from '@/shared/schema';
 import { FALLBACK_CASES } from '@/backend/fallbacks';
 import { getTaskAnswerAlignmentIssues } from '@/backend/validator';
+import { GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS } from '@/shared/generation-config';
 import { generateDatasetRows } from './utils/dataset-generator';
 import {
   SavedSettings,
@@ -35,11 +36,14 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [regeneratingTaskNo, setRegeneratingTaskNo] = useState<number | null>(null);
+  const [regenerateRetryAfterSeconds, setRegenerateRetryAfterSeconds] = useState(0);
 
   // Modals
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [historyList, setHistoryList] = useState<CaseStudy[]>([]);
   const [generatorSettings, setGeneratorSettings] = useState<SavedSettings>(() => getSavedSettings());
+  const generateInFlightRef = useRef(false);
+  const regenerateInFlightRef = useRef(false);
 
   // Theme
   const [darkMode, setDarkMode] = useState<boolean>(false);
@@ -93,6 +97,15 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (regenerateRetryAfterSeconds <= 0) return;
+    const timer = setTimeout(
+      () => setRegenerateRetryAfterSeconds((remaining) => remaining - 1),
+      1000,
+    );
+    return () => clearTimeout(timer);
+  }, [regenerateRetryAfterSeconds]);
+
   const toggleDarkMode = () => {
     const next = !darkMode;
     setDarkMode(next);
@@ -111,6 +124,8 @@ export default function App() {
   }, [caseStudy]);
 
   const handleGenerate = async (req: GenerateRequest) => {
+    if (generateInFlightRef.current) return;
+    generateInFlightRef.current = true;
     setIsLoading(true);
     setErrorMsg(null);
 
@@ -138,6 +153,12 @@ export default function App() {
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.code === 'RATE_LIMITED') {
+          return {
+            retryAfterSeconds:
+              Number(data.retryAfterSeconds) || GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
+          };
+        }
         throw new Error(data.error || 'Gagal menghasilkan studi kasus.');
       }
 
@@ -164,15 +185,19 @@ export default function App() {
         if (newCase.taskCount !== undefined) url.searchParams.set('taskCount', String(newCase.taskCount));
         window.history.replaceState({}, '', url.toString());
       }
+      return;
     } catch (err) {
       console.error('Error generating case:', err);
       setErrorMsg((err as Error).message || 'Terjadi kesalahan jaringan.');
     } finally {
       setIsLoading(false);
+      generateInFlightRef.current = false;
     }
   };
 
   const handleRegenerateTask = async (taskNo: number) => {
+    if (regenerateInFlightRef.current) return;
+    regenerateInFlightRef.current = true;
     setRegeneratingTaskNo(taskNo);
     try {
       const res = await fetch('/api/regenerate-task', {
@@ -183,6 +208,12 @@ export default function App() {
 
       const data = await res.json();
       if (!res.ok) {
+        if (data.code === 'RATE_LIMITED') {
+          const retryAfterSeconds =
+            Number(data.retryAfterSeconds) || GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS;
+          setRegenerateRetryAfterSeconds(Math.max(1, retryAfterSeconds));
+          return;
+        }
         throw new Error(data.error || `Gagal meregenerate tugas #${taskNo}`);
       }
 
@@ -200,6 +231,7 @@ export default function App() {
       alert((err as Error).message);
     } finally {
       setRegeneratingTaskNo(null);
+      regenerateInFlightRef.current = false;
     }
   };
 
@@ -291,6 +323,7 @@ export default function App() {
           onToggleTask={handleToggleTask}
           onRegenerateTask={handleRegenerateTask}
           regeneratingTaskNo={regeneratingTaskNo}
+          regenerateRetryAfterSeconds={regenerateRetryAfterSeconds}
         />
 
         {/* 6. Clue rumus */}

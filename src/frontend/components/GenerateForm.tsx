@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Sparkles, Sliders, RefreshCw, AlertCircle, Info } from 'lucide-react';
 import { Level, ExcelVersion, FormulaStyle, GenerateRequest, INDUSTRY_OPTIONS, Industry, TaskCountMode } from '@/shared/schema';
 import { ADMIN_ROLES, getRecommendedAdminRole, getRecommendedTaskCount, LEVEL_CONFIG } from '@/shared/constants';
-import { GENERATION_CONFIG, getTaskCountOptions } from '@/shared/generation-config';
+import {
+  GENERATION_CONFIG,
+  GENERATION_SUCCESS_COOLDOWN_SECONDS,
+  getTaskCountOptions,
+} from '@/shared/generation-config';
 
 const AUTO_ADMIN_ROLE = 'recommended';
 
@@ -15,7 +19,7 @@ function normalizeTaskCount(level: Level | null, taskCount: number): number {
 }
 
 interface GenerateFormProps {
-  onGenerate: (req: GenerateRequest) => Promise<void>;
+  onGenerate: (req: GenerateRequest) => Promise<{ retryAfterSeconds?: number } | void>;
   isLoading: boolean;
   initialLevel?: Level | null;
   initialRole?: string;
@@ -51,7 +55,9 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   );
   const [taskCountMode, setTaskCountMode] = useState<TaskCountMode>(initialTaskCountMode ?? 'manual');
   const [cooldown, setCooldown] = useState<number>(0);
+  const [isRateLimited, setIsRateLimited] = useState<boolean>(false);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     setLevel(initialLevel ?? 'easy');
@@ -65,6 +71,16 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
     setTaskCountMode('manual');
   }, [initialExcelVersion, initialFormulaStyle, initialIndustry, initialLevel, initialRole, initialStructuredReferenceAt, initialTaskCount, initialTaskCountMode]);
 
+  useEffect(() => {
+    if (cooldown <= 0) {
+      setIsRateLimited(false);
+      return;
+    }
+
+    const timer = setTimeout(() => setCooldown((remaining) => remaining - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
   const recommendedTaskCount = level
     ? getRecommendedTaskCount(level, industry)
     : 5;
@@ -77,30 +93,28 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading || cooldown > 0 || !level) return;
+    if (submittingRef.current || isLoading || cooldown > 0 || !level) return;
 
-    await onGenerate({
-      level,
-      role: effectiveRole,
-      excelVersion,
-      formulaStyle,
-      structuredReferenceAt,
-      industry,
-      taskCount: effectiveTaskCount,
-      taskCountMode,
-    });
-
-    // 5-second cooldown to avoid accidental spam
-    setCooldown(5);
-    const interval = setInterval(() => {
-      setCooldown((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
+    submittingRef.current = true;
+    try {
+      const result = await onGenerate({
+        level,
+        role: effectiveRole,
+        excelVersion,
+        formulaStyle,
+        structuredReferenceAt,
+        industry,
+        taskCount: effectiveTaskCount,
+        taskCountMode,
       });
-    }, 1000);
+
+      const retryAfterSeconds = result?.retryAfterSeconds;
+      const cooldownSeconds = Math.max(1, retryAfterSeconds ?? GENERATION_SUCCESS_COOLDOWN_SECONDS);
+      setIsRateLimited(retryAfterSeconds !== undefined);
+      setCooldown(cooldownSeconds);
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   const currentLevelConfig = level ? LEVEL_CONFIG[level] : null;
@@ -379,7 +393,11 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
                 <span>AI Sedang Merancang Studi Kasus...</span>
               </>
             ) : cooldown > 0 ? (
-              <span>Tunggu {cooldown} detik sebelum generate ulang...</span>
+              <span>
+                {isRateLimited
+                  ? `Batas penggunaan AI tercapai — coba lagi dalam ${cooldown} detik`
+                  : `Tunggu ${cooldown} detik sebelum generate ulang...`}
+              </span>
             ) : !level ? (
               <span>Pilih Tingkat Kesulitan Terlebih Dahulu</span>
             ) : (

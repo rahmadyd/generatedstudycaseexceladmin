@@ -4,6 +4,7 @@ import { CaseStudy, GenerateRequest, RegenerateTaskRequest, Task } from '../shar
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
 import { compileGeneratePrompt, compileRegenerateTaskPrompt, resolveIndustry, resolveTaskCount } from './prompts';
 import { callGroqChat } from './groq';
+import { GroqApiError } from './ai-client';
 import { GENERATION_CONFIG, GENERATION_REPAIR_ATTEMPTS } from '../shared/generation-config';
 import {
   getCaseStudyAlignmentIssues,
@@ -44,6 +45,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         requestId,
         callNumber: attempt + 1,
         level: req.level,
+        allowRateLimitFallback: attempt === 0,
       });
 
       let parsed: unknown;
@@ -100,6 +102,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
       const msg = (err as Error).message || '';
       // Provider rejections won't improve by retrying and may worsen rate limits.
       if (
+        (err instanceof GroqApiError && err.status === 429) ||
         msg.includes('429') ||
         msg.includes('401') ||
         msg.includes('tidak valid') ||

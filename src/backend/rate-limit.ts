@@ -1,12 +1,16 @@
-// Simple in-memory rate limiter per IP for serverless environment
+import {
+  GENERATION_GUARD_STATE_RETENTION_MS,
+  GENERATION_RATE_LIMIT_WINDOW_MS,
+} from '../shared/generation-config';
+
 interface RateLimitRecord {
   count: number;
   resetAt: number;
 }
 
 const ipMap = new Map<string, RateLimitRecord>();
+const lastRequestMap = new Map<string, number>();
 
-// Cleanup stale records periodically
 setInterval(() => {
   const now = Date.now();
   ipMap.forEach((record, ip) => {
@@ -14,12 +18,18 @@ setInterval(() => {
       ipMap.delete(ip);
     }
   });
-}, 60000);
+  lastRequestMap.forEach((lastRequestAt, clientKey) => {
+    if (now - lastRequestAt > GENERATION_GUARD_STATE_RETENTION_MS) {
+      lastRequestMap.delete(clientKey);
+    }
+  });
+}, GENERATION_RATE_LIMIT_WINDOW_MS);
 
-/**
- * Checks rate limit: allows max requests per windowMs.
- */
-export function checkRateLimit(ip: string, limit = 10, windowMs = 60000): { allowed: boolean; retryAfterSec?: number } {
+export function checkRateLimit(
+  ip: string,
+  limit: number,
+  windowMs: number,
+): { allowed: boolean; retryAfterSec?: number } {
   const now = Date.now();
   const record = ipMap.get(ip);
 
@@ -29,10 +39,29 @@ export function checkRateLimit(ip: string, limit = 10, windowMs = 60000): { allo
   }
 
   if (record.count >= limit) {
-    const retryAfterSec = Math.ceil((record.resetAt - now) / 1000);
-    return { allowed: false, retryAfterSec };
+    return { allowed: false, retryAfterSec: Math.ceil((record.resetAt - now) / 1000) };
   }
 
   record.count += 1;
+  return { allowed: true };
+}
+
+/**
+ * In-memory cooldown. Vercel serverless instances do not share this state.
+ */
+export function checkMinimumInterval(
+  clientKey: string,
+  intervalMs: number,
+): { allowed: boolean; retryAfterSec?: number } {
+  const now = Date.now();
+  const lastRequestAt = lastRequestMap.get(clientKey);
+  if (lastRequestAt !== undefined && now - lastRequestAt < intervalMs) {
+    return {
+      allowed: false,
+      retryAfterSec: Math.ceil((intervalMs - (now - lastRequestAt)) / 1000),
+    };
+  }
+
+  lastRequestMap.set(clientKey, now);
   return { allowed: true };
 }

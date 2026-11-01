@@ -30,6 +30,7 @@ interface TasksSectionProps {
   onToggleTask: (taskNo: number) => void;
   onRegenerateTask: (taskNo: number) => Promise<void>;
   regeneratingTaskNo: number | null;
+  regenerateRetryAfterSeconds: number;
 }
 
 export const TasksSection: React.FC<TasksSectionProps> = ({
@@ -38,6 +39,7 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
   onToggleTask,
   onRegenerateTask,
   regeneratingTaskNo,
+  regenerateRetryAfterSeconds,
 }) => {
   const [copiedTask, setCopiedTask] = useState<number | null>(null);
   const [copiedFormulaTask, setCopiedFormulaTask] = useState<number | null>(null);
@@ -166,6 +168,11 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
 
         {/* Task Cards List */}
         <div className="space-y-5">
+          {regenerateRetryAfterSeconds > 0 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              Batas penggunaan AI tercapai. Coba ganti tugas lagi dalam {regenerateRetryAfterSeconds} detik.
+            </div>
+          )}
           {caseStudy.tasks.map((task) => {
             const isCompleted = completedTasks.includes(task.no);
             const isRegenerating = regeneratingTaskNo === task.no;
@@ -257,13 +264,17 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
                   <button
                     type="button"
                     onClick={() => onRegenerateTask(task.no)}
-                    disabled={isRegenerating}
+                    disabled={regeneratingTaskNo !== null || regenerateRetryAfterSeconds > 0}
                     className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-gray-500 hover:text-emerald-700 dark:text-gray-400 dark:hover:text-emerald-300 hover:bg-gray-100 dark:hover:bg-gray-700/60 border border-gray-200 dark:border-gray-700 transition flex-shrink-0"
                     title={`Generate ulang tugas #${task.no} saja tanpa mereset soal lain`}
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin text-emerald-600' : ''}`} />
                     <span className="hidden sm:inline">
-                      {isRegenerating ? 'Mengganti...' : 'Ganti Tugas Ini'}
+                      {isRegenerating
+                        ? 'Mengganti...'
+                        : regenerateRetryAfterSeconds > 0
+                          ? `Tunggu ${regenerateRetryAfterSeconds} detik`
+                          : 'Ganti Tugas Ini'}
                     </span>
                   </button>
                 </div>

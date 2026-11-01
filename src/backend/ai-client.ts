@@ -9,6 +9,29 @@ export interface AICompletionOptions {
   callNumber?: number;
   level?: string;
   providerCallNumber?: number;
+  allowRateLimitFallback?: boolean;
+}
+
+export class GroqApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly providerCode?: string,
+    readonly retryAfterSeconds?: number,
+  ) {
+    super(message);
+    this.name = 'GroqApiError';
+  }
+}
+
+function parseRetryAfterSeconds(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, Math.ceil(seconds));
+
+  const retryAt = Date.parse(value);
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
 }
 
 async function logGroqResponse(
@@ -107,7 +130,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 3500,
       ...(m.toLocaleLowerCase('en').includes('gpt-oss') ? { reasoning_effort: 'low' } : {}),
-      ...(options.jsonMode === false ? {} : { response_format: { type: 'json_object' } }),
+      ...(options.jsonMode === true ? { response_format: { type: 'json_object' } } : {}),
     });
 
   let activeModel = model;
@@ -123,7 +146,12 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
   });
 
   // Fallback only to a second model if explicitly configured and different.
-  if (!response.ok && response.status !== 429 && model === defaultModel && fallbackModel !== defaultModel) {
+  if (
+    response.status === 429 &&
+    options.allowRateLimitFallback !== false &&
+    model === defaultModel &&
+    fallbackModel !== defaultModel
+  ) {
     await logGroqResponse(response, options, model, providerCallNumber);
     activeModel = fallbackModel;
     providerCallNumber += 1;
@@ -151,7 +179,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
 
     if (
       response.status === 400 &&
-      options.jsonMode !== false &&
+      options.jsonMode === true &&
       /failed to generate json/i.test(parsedMsg)
     ) {
       return callChatAI({
@@ -163,16 +191,11 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     }
 
     if (response.status === 429) {
-      const limitDetails = [
-        providerCode && `kode: ${providerCode}`,
-        response.headers.get('retry-after') && `coba lagi dalam ${response.headers.get('retry-after')} detik`,
-        response.headers.get('x-ratelimit-reset-requests') &&
-          `reset request: ${response.headers.get('x-ratelimit-reset-requests')}`,
-        response.headers.get('x-ratelimit-reset-tokens') &&
-          `reset token: ${response.headers.get('x-ratelimit-reset-tokens')}`,
-      ].filter(Boolean);
-      throw new Error(
-        `Groq mengembalikan 429: ${parsedMsg}${limitDetails.length ? ` (${limitDetails.join('; ')})` : ''}`
+      throw new GroqApiError(
+        'Batas penggunaan Groq tercapai.',
+        429,
+        providerCode,
+        parseRetryAfterSeconds(response.headers.get('retry-after')),
       );
     }
     if (response.status === 401) {
