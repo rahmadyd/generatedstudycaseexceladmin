@@ -62,3 +62,11 @@ Jangan menambahkan API key, header Authorization, atau isi prompt ke log.
 - Kasus bank melewati validasi schema dan validasi keselarasan rumus yang sama sebelum dikembalikan. UI menandainya sebagai “Kasus cadangan (bank statis)”.
 - Bank yang tersedia terbatas pada Keuangan/Kasir, industri Akuntansi dan keuangan, gaya rumus classic, serta Easy 3–4 tugas, Middle 4–5, Advance 4–5, dan Portfolio 5–6. Excel 2016/2019 dan Microsoft 365 didukung.
 - Untuk kombinasi lain, endpoint mengembalikan error 429 seperti biasa. Bank statis bukan pengganti umum untuk generate AI dan tidak menurunkan batas kuota Groq.
+
+## Pemantauan fase 5
+
+- Event `groq_completion` kini menyertakan timestamp ISO UTC. Kegagalan transport juga dicatat sebagai event dengan `status: null`; tidak ada API key, header Authorization, atau isi prompt di event.
+- `npm run report:groq -- <path-log-jsonl>` merangkum panggilan provider per hari UTC dan level: rata-rata `usage.total_tokens`, jumlah respons gagal, tingkat gagal, dan jumlah 429.
+- Tingkat gagal dihitung per panggilan provider (non-2xx atau transport), bukan per klik pengguna. Rata-rata token menghitung respons yang menyertakan token aktual; `max_tokens` bukan pemakaian aktual.
+- Laporan bersifat lokal dan dihitung dari file log JSONL yang diekspor pengguna dari Vercel. Tidak ada agregasi lintas instance atau penyimpanan/dashboard persisten.
+- **Belum ada metrik produksi yang dicatat di dokumen ini.** Angka hanya dapat dihitung setelah versi dengan timestamp dideploy dan log pemakaian tersedia.

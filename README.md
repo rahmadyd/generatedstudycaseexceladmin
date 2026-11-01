@@ -58,6 +58,7 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
    - Jumlah tugas dibatasi sesuai level agar respons lebih ringkas: Easy 3–4, Middle 4–5, Advance 4–5.
    - Generate Advance dan Portfolio dipisah menjadi beberapa tahap. Jika tahap kunci/brief/rubrik gagal, kasus yang sudah berhasil dibuat tetap dapat digunakan dan bagian yang belum lengkap bisa dicoba ulang.
    - Jika Groq mengembalikan 429 saat membuat kasus, aplikasi memakai bank kasus statis hanya untuk kombinasi level, role, industri, gaya rumus, dan jumlah tugas yang tersedia. Kasus cadangan ditandai di header; jika tidak ada kombinasi yang cocok, aplikasi tetap menampilkan error 429. Bank saat ini hanya mencakup role Keuangan/Kasir pada industri Akuntansi dan keuangan, dengan gaya rumus classic dan jumlah tugas terbatas.
+   - Log pemakaian Groq memuat timestamp UTC. Ekspor log JSONL dari Vercel dapat diringkas per tanggal/level dengan `npm run report:groq -- <path-log-jsonl>`; laporan memuat rata-rata token, kegagalan panggilan provider, dan jumlah 429 tanpa database tambahan.
 
 ---
 
@@ -178,6 +179,16 @@ Variabel model opsional:
 - `GROQ_FALLBACK_MODEL`: model alternatif Groq. Sebaiknya berbeda dari model utama agar fallback punya kuota model tersendiri. Jika tidak disetel, fallback dinonaktifkan.
 
 Model `gpt-oss` dikirim dengan `reasoning_effort: low`. Untuk model lain, parameter tersebut tidak dikirim.
+
+### Ringkasan log pemakaian Groq
+
+Ekspor log terstruktur `groq_completion` dari Vercel sebagai JSONL, lalu jalankan:
+
+```bash
+npm run report:groq -- "C:\path\to\vercel-groq-logs.jsonl"
+```
+
+Laporan dikelompokkan menurut tanggal UTC dan level. “Panggilan” berarti satu panggilan provider Groq (termasuk percobaan model fallback); “Gagal” adalah respons non-2xx atau kegagalan transport; rata-rata token hanya memakai respons yang menyertakan `usage.total_tokens`. Laporan berjalan lokal, tidak menyimpan log ke aplikasi, dan tidak mengirim API key.
 
 ---
 

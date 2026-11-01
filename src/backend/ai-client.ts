@@ -42,6 +42,7 @@ async function logGroqResponse(
 ): Promise<void> {
   const baseLog = {
     event: 'groq_completion',
+    timestamp: new Date().toISOString(),
     requestId: options.requestId,
     level: options.level,
     callNumber: options.callNumber,
@@ -78,6 +79,24 @@ async function logGroqResponse(
     resetTokens: response.headers.get('x-ratelimit-reset-tokens'),
     resetRequests: response.headers.get('x-ratelimit-reset-requests'),
     providerMessage,
+  }));
+}
+
+function logGroqTransportFailure(
+  options: AICompletionOptions,
+  model: string,
+  providerCallNumber: number,
+): void {
+  console.log(JSON.stringify({
+    event: 'groq_completion',
+    timestamp: new Date().toISOString(),
+    requestId: options.requestId,
+    level: options.level,
+    callNumber: options.callNumber,
+    providerCallNumber,
+    model,
+    status: null,
+    errorType: 'transport',
   }));
 }
 
@@ -136,7 +155,15 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
   let activeModel = model;
   let providerCallNumber = options.providerCallNumber ?? 0;
   providerCallNumber += 1;
-  let response = await fetch(endpoint, {
+  const trackedFetch: typeof fetch = async (input, init) => {
+    try {
+      return await globalThis.fetch(input, init);
+    } catch (error) {
+      logGroqTransportFailure(options, activeModel, providerCallNumber);
+      throw error;
+    }
+  };
+  let response = await trackedFetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -155,7 +182,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     await logGroqResponse(response, options, model, providerCallNumber);
     activeModel = fallbackModel;
     providerCallNumber += 1;
-    response = await fetch(endpoint, {
+    response = await trackedFetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

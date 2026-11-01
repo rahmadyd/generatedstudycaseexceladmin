@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "report:groq": "node scripts/summarize-groq-logs.mjs"
   },
   "keywords": [],
   "author": "",
