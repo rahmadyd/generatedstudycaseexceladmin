@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GenerateRequestSchema } from '@/shared/schema';
 import { generateCaseStudyService } from '@/backend/task-service';
-import { getCaseBankFallback } from '@/backend/case-bank';
 import { checkMinimumInterval, checkRateLimit } from '@/backend/rate-limit';
 import { GroqApiError } from '@/backend/ai-client';
 import {
@@ -66,18 +65,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    try {
-      const caseStudy = await generateCaseStudyService(request);
-      return NextResponse.json({ success: true, caseStudy });
-    } catch (error) {
-      if (error instanceof GroqApiError && error.status === 429) {
-        const fallbackCase = getCaseBankFallback(request);
-        if (fallbackCase) {
-          return NextResponse.json({ success: true, caseStudy: fallbackCase });
-        }
-      }
-      throw error;
-    }
+    const caseStudy = await generateCaseStudyService(request);
+    return NextResponse.json({ success: true, caseStudy });
   } catch (error) {
     console.error('API /api/generate error:', error);
     if (error instanceof GroqApiError && error.status === 429) {

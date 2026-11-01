@@ -13,10 +13,18 @@ import { GENERATION_CONFIG } from '@/shared/generation-config';
 const STORAGE_KEYS = {
   HISTORY: 'excel_admin_cases_history',
   SETTINGS: 'excel_admin_last_settings',
-  BYOK_KEY: 'excel_admin_byok_groq_key',
   THEME: 'excel_admin_theme',
   TASK_PROGRESS: 'excel_admin_task_progress',
 };
+
+export function removeLegacyBrowserApiKey(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem('excel_admin_byok_groq_key');
+  } catch (error) {
+    console.warn('Unable to remove the obsolete browser API key setting:', error);
+  }
+}
 
 export interface SavedSettings {
   level: Level;
@@ -60,6 +68,14 @@ export function getSavedCasesHistory(): CaseStudy[] {
   }
 
   const history = saved.flatMap((item) => {
+    if (
+      typeof item === 'object' &&
+      item !== null &&
+      'source' in item &&
+      item.source === 'bank'
+    ) {
+      return [];
+    }
     const parsed = CaseStudySchema.safeParse(item);
     return parsed.success ? [parsed.data] : [];
   });
@@ -107,29 +123,6 @@ export function getSavedSettings(): SavedSettings {
 
 export function saveLastSettings(settings: SavedSettings): void {
   safeSetStorage(STORAGE_KEYS.SETTINGS, settings);
-}
-
-// BYOK Key
-export function getCustomApiKey(): string {
-  if (typeof window === 'undefined') return '';
-  try {
-    return window.localStorage.getItem(STORAGE_KEYS.BYOK_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-export function saveCustomApiKey(key: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (key.trim()) {
-      window.localStorage.setItem(STORAGE_KEYS.BYOK_KEY, key.trim());
-    } else {
-      window.localStorage.removeItem(STORAGE_KEYS.BYOK_KEY);
-    }
-  } catch (err) {
-    console.warn('Error saving API Key:', err);
-  }
 }
 
 // Task Checklist Progress

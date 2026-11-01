@@ -56,7 +56,7 @@ export function getTaskCountOptions(level: Level): number[] {
   return GENERATION_CONFIG[level].taskCountOptions;
 }
 
-export const GENERATION_REPAIR_ATTEMPTS = 1;
+export const GENERATION_REPAIR_ATTEMPTS = 2;
 export const GENERATION_RATE_LIMIT_REQUESTS = 15;
 export const REGENERATE_RATE_LIMIT_REQUESTS = 20;
 export const ANSWER_KEY_RATE_LIMIT_REQUESTS = 20;

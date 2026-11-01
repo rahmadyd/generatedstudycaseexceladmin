@@ -211,10 +211,23 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         if (alignmentIssues.length === 0) {
           return validation.data;
         }
-        retryGuidance = `\n\nMANDATORY: The previous response did not match the requested criteria: ${alignmentIssues.join('; ')}. Regenerate the entire case and ensure role=${req.role}, industry=${industry}, the narrative/tasks show the selected role, and dataset columns/values are specific to both. Do not return an unrelated generic business case.`;
+        const columnLayout = validation.data.dataset.columns
+          .map((column, index) => {
+            let columnNumber = index;
+            let columnLetter = '';
+            do {
+              columnLetter = String.fromCharCode(65 + (columnNumber % 26)) + columnLetter;
+              columnNumber = Math.floor(columnNumber / 26) - 1;
+            } while (columnNumber >= 0);
+            return `${columnLetter}=${column.name}`;
+          })
+          .join(', ');
+        retryGuidance = `\n\nREPAIR THE PREVIOUS VALIDATION ERRORS: ${alignmentIssues.join('; ')}.
+Generate a new complete case with role=${req.role} and industry=${industry}. Include clear industry-specific terms in both scenario and dataset headers/values. Make every formula use the exact dataset columns named by its task and apply all stated criteria. Do not mention unused dataset columns in instructions or hints. For Classic formulas, use this column layout: ${columnLayout}. Do not repeat the previous mismatches.`;
         throw new Error(`Hasil AI tidak selaras dengan pilihan bidang admin/industri: ${alignmentIssues.join('; ')}`);
       }
 
+      retryGuidance = `\n\nREPAIR THE PREVIOUS SCHEMA ERRORS: ${validation.errors.join('; ')}. Return a complete compact JSON object matching the required schema exactly.`;
       throw new Error(`Validasi gagal (attempt ${attempt + 1}): ${validation.errors.join('; ')}`);
     } catch (err) {
       lastError = err;
@@ -222,11 +235,8 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
       const malformedJson = err instanceof GroqOutputTruncatedError ||
         msg.includes('Gagal parse JSON dari AI') ||
         msg.includes('bukan object JSON');
-      if (
-        attempt < GENERATION_REPAIR_ATTEMPTS &&
-        malformedJson
-      ) {
-        retryGuidance ||= '\n\nRETRY OUTPUT FORMAT: Return one complete compact JSON object only. Shorten all prose and keep the requested schema unchanged.';
+      if (attempt < GENERATION_REPAIR_ATTEMPTS && malformedJson) {
+        retryGuidance = '\n\nRETRY OUTPUT FORMAT: Return one complete compact JSON object only. Shorten all prose and keep the requested schema unchanged.';
       }
       // Provider rejections won't improve by retrying and may worsen rate limits.
       if (

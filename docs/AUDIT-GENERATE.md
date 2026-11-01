@@ -56,12 +56,10 @@ Jangan menambahkan API key, header Authorization, atau isi prompt ke log.
 - Kunci jawaban yang belum tersedia tidak dianggap sebagai ketidakselarasan fatal saat memuat riwayat; kunci yang sudah ada tetap divalidasi. PDF kunci menampilkan teks penanda pada baris yang belum memiliki kunci.
 - Pipeline bertahap menambah jumlah panggilan normal untuk Advance dibanding Easy/Middle. Setiap tahap tetap memiliki batas token sendiri dan fallback 429 paling banyak satu percobaan ke model berbeda.
 
-## Bank kasus cadangan fase 4
+## Bank kasus cadangan fase 4 (sudah dinonaktifkan)
 
-- Jika generate kasus mendapat 429 dari Groq, `POST /api/generate` mencoba mengambil kasus dari `src/backend/case-bank.json`. Limit internal aplikasi tidak memicu fallback ini.
-- Kasus bank melewati validasi schema dan validasi keselarasan rumus yang sama sebelum dikembalikan. UI menandainya sebagai “Kasus cadangan (bank statis)”.
-- Bank yang tersedia terbatas pada Keuangan/Kasir, industri Akuntansi dan keuangan, gaya rumus classic, serta Easy 3–4 tugas, Middle 4–5, dan Advance 4–5. Excel 2016/2019 dan Microsoft 365 didukung.
-- Untuk kombinasi lain, endpoint mengembalikan error 429 seperti biasa. Bank statis bukan pengganti umum untuk generate AI dan tidak menurunkan batas kuota Groq.
+- Implementasi bank statis fase ini sudah dihapus. Semua generate kasus harus berhasil dari Groq; tidak ada template kasus lokal sebagai pengganti respons AI.
+- Jika kuota Groq habis, endpoint mengembalikan error 429 agar sumber hasil tetap transparan.
 
 ## Pemantauan fase 5
 
@@ -74,5 +72,7 @@ Jangan menambahkan API key, header Authorization, atau isi prompt ke log.
 ## Perbaikan keluaran JSON dan level
 
 - Batas output dinaikkan agar cukup untuk schema kasus: Easy 2.200, Middle 2.800, Advance 2.600 untuk tahap kasus dan 1.200 untuk tahap kunci.
-- Jika Groq menyatakan output terpotong (`finish_reason: length`) atau respons gagal diparse sebagai JSON, generate mencoba ulang satu kali dengan instruksi JSON ringkas dan batas token perbaikan lebih besar.
+- Jika Groq menyatakan output terpotong (`finish_reason: length`) atau respons gagal diparse sebagai JSON, generate mencoba ulang maksimal dua kali dengan instruksi JSON ringkas dan batas token perbaikan lebih besar.
 - Level Portfolio dihapus dari schema, form, fallback, bank kasus, prompt, dan export. Kasus Portfolio lama di riwayat browser dibuang saat riwayat dimuat; pilihan level tersimpan yang lama kembali ke Easy.
+- Jika schema atau pemeriksaan keselarasan role/industri/tugas/rumus gagal, aplikasi kini menyertakan daftar masalah dan peta kolom pada prompt perbaikan, lalu meminta Groq membuat ulang kasus sampai dua kali. Tidak ada fallback ke kasus statis lokal; bila semua percobaan gagal, error validasi ditampilkan.
+- Halaman baru tidak menampilkan contoh studi kasus lokal. Baris data dataset tetap dibangkitkan secara deterministik di browser dari skema dataset yang dihasilkan AI.

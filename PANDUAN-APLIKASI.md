@@ -57,15 +57,18 @@ Kasus yang berhasil dibuat tersimpan di riwayat browser. Pengguna dapat membuka 
 
 - Aplikasi mengirim permintaan generate dari server ke endpoint Groq.
 - Provider menggunakan environment variable server **`GROQ_API_KEY`**. API key tidak perlu dimasukkan di browser.
+- Pengaturan API key browser yang lama sudah dihapus; saat aplikasi dibuka, key lama yang tersimpan di `localStorage` dibersihkan.
+- Skenario, tugas, schema dataset, dan kunci jawaban dihasilkan oleh AI. Aplikasi tidak memakai bank kasus atau template lokal sebagai hasil generate pengganti. Jika AI tetap menghasilkan output yang tidak selaras setelah dua kali perbaikan, aplikasi menampilkan error dan tidak menyajikan kasus lokal.
+- Baris-baris dataset diisi secara deterministik di browser berdasarkan schema kolom dari AI; nilai baris tidak dibuat lewat panggilan AI.
 - Model utama default adalah `openai/gpt-oss-120b`; model dapat dikonfigurasi melalui `GROQ_MODEL`.
 - `GROQ_FALLBACK_MODEL` dapat digunakan untuk menentukan model alternatif Groq. Sebaiknya berbeda dari model utama; jika tidak disetel, fallback dinonaktifkan.
 - Model dengan nama `gpt-oss` dikirim dengan `reasoning_effort: low`.
 - Jumlah tugas dibatasi per level untuk mengurangi ukuran respons: Easy 3–4, Middle 4–5, Advance 4–5.
 - OpenAI tidak digunakan sebagai provider atau fallback.
 - Jika model utama mengembalikan 429 dan `GROQ_FALLBACK_MODEL` berbeda, aplikasi mencoba model cadangan satu kali. Jika keduanya tetap 429, aplikasi tidak mengulang otomatis tanpa batas.
-- Jika generate kasus mendapat 429 dari Groq, bank kasus statis dapat dipakai untuk kombinasi yang tersedia: role Keuangan/Kasir, industri Akuntansi dan keuangan, gaya rumus classic, dan jumlah tugas terbatas. Kasus bank diberi label di header; kombinasi lain tetap menampilkan error 429.
+- Jika Groq mengembalikan 429, aplikasi menampilkan error kuota. Aplikasi tidak mengganti hasil dengan bank kasus atau template lokal.
 - Untuk semua level, kegagalan generate ditampilkan di aplikasi. Jika kasus Advance berhasil dibuat tetapi tahap kunci gagal, kasus tetap tersedia dan kuncinya dapat dicoba ulang.
-- Respons yang gagal validasi hanya diperbaiki maksimal satu kali. Tombol juga memiliki guard klik ganda dan server membatasi permintaan beruntun per IP pada instance yang sama.
+- Jika JSON, schema, atau keselarasan rumus/role/industri gagal, prompt diperbaiki berdasarkan error dan dikirim ulang ke Groq maksimal dua kali. Jika tetap gagal, error ditampilkan dan tidak ada kasus lokal yang disajikan. Tombol juga memiliki guard klik ganda dan server membatasi permintaan beruntun per IP pada instance yang sama.
 - Kunci PDF tetap dapat diunduh meski sebagian kunci belum tersedia; baris terkait diberi penanda **Kunci jawaban belum tersedia**.
 - Endpoint `/api/health` hanya melaporkan apakah `GROQ_API_KEY` tersedia di deployment; endpoint tersebut tidak menguji validitas key, kuota, atau akses ke model.
 

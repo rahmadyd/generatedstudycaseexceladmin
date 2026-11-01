@@ -13,7 +13,6 @@ import { PDFExportSection } from './components/PDFExportSection';
 import { HistoryModal } from './components/HistoryModal';
 
 import { CaseStudy, GenerateRequest } from '@/shared/schema';
-import { FALLBACK_CASES } from '@/backend/fallbacks';
 import { getTaskAnswerAlignmentIssues } from '@/backend/validator';
 import { GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS } from '@/shared/generation-config';
 import { generateDatasetRows } from './utils/dataset-generator';
@@ -22,6 +21,7 @@ import {
   getSavedCasesHistory,
   getSavedSettings,
   getTaskProgress,
+  removeLegacyBrowserApiKey,
   safeSetStorage,
   saveCaseToHistory,
   saveLastSettings,
@@ -30,7 +30,7 @@ import {
 import { AlertCircle } from 'lucide-react';
 
 export default function App() {
-  const [caseStudy, setCaseStudy] = useState<CaseStudy>(FALLBACK_CASES.easy);
+  const [caseStudy, setCaseStudy] = useState<CaseStudy | null>(null);
   const [completedTasks, setCompletedTasks] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -53,6 +53,8 @@ export default function App() {
 
   // Initial load from storage and URL query params
   useEffect(() => {
+    removeLegacyBrowserApiKey();
+
     // 1. Theme
     if (typeof window !== 'undefined') {
       const isDark =
@@ -86,7 +88,7 @@ export default function App() {
       }
     }
 
-    // Default: use last history if available, else fallback
+    // Load the latest previously generated case; new visitors start without a sample case.
     if (savedHistory.length > 0) {
       const latest = savedHistory.find((savedCase) =>
         getTaskAnswerAlignmentIssues(savedCase).length === 0,
@@ -132,7 +134,7 @@ export default function App() {
 
   // Re-generate dataset rows when caseStudy or seed changes
   const datasetRows = useMemo(() => {
-    return generateDatasetRows(caseStudy);
+    return caseStudy ? generateDatasetRows(caseStudy) : [];
   }, [caseStudy]);
 
   const handleGenerate = async (req: GenerateRequest) => {
@@ -216,7 +218,9 @@ export default function App() {
     }
   };
 
-  const handleRetryMissingContent = async (caseToComplete: CaseStudy = caseStudy) => {
+  const handleRetryMissingContent = async (caseToComplete?: CaseStudy) => {
+    const targetCase = caseToComplete ?? caseStudy;
+    if (!targetCase) return;
     if (missingContentInFlightRef.current || missingContentRetryAfterSeconds > 0) return;
     missingContentInFlightRef.current = true;
     setIsCompletingMissingContent(true);
@@ -225,7 +229,7 @@ export default function App() {
       const res = await fetch('/api/generate-missing-content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caseStudy: caseToComplete }),
+        body: JSON.stringify({ caseStudy: targetCase }),
       });
       const data = await res.json();
       const updatedCase: CaseStudy | undefined = data.caseStudy;
@@ -262,6 +266,7 @@ export default function App() {
   };
 
   const handleRegenerateTask = async (taskNo: number) => {
+    if (!caseStudy) return;
     if (regenerateInFlightRef.current) return;
     regenerateInFlightRef.current = true;
     setRegeneratingTaskNo(taskNo);
@@ -302,6 +307,7 @@ export default function App() {
   };
 
   const handleToggleTask = (taskNo: number) => {
+    if (!caseStudy) return;
     const next = completedTasks.includes(taskNo)
       ? completedTasks.filter((n) => n !== taskNo)
       : [...completedTasks, taskNo];
@@ -345,7 +351,7 @@ export default function App() {
       {/* Sticky Navigation */}
       <StickyNav
         completedCount={completedTasks.length}
-        totalTasks={caseStudy.tasks.length}
+        totalTasks={caseStudy?.tasks.length ?? 0}
       />
 
       {/* Main Content Area */}
@@ -365,9 +371,9 @@ export default function App() {
         <GenerateForm
           onGenerate={handleGenerate}
           isLoading={isLoading}
-          initialLevel={caseStudy.level}
-          initialRole={caseStudy.role}
-          initialExcelVersion={caseStudy.excelVersion}
+          initialLevel={caseStudy?.level ?? generatorSettings.level}
+          initialRole={caseStudy?.role ?? generatorSettings.role}
+          initialExcelVersion={caseStudy?.excelVersion ?? generatorSettings.excelVersion}
           initialFormulaStyle={generatorSettings.formulaStyle}
           initialStructuredReferenceAt={generatorSettings.structuredReferenceAt}
           initialIndustry={generatorSettings.industry}
@@ -375,34 +381,34 @@ export default function App() {
           initialTaskCountMode={generatorSettings.taskCountMode}
         />
 
-        {/* 2. Judul + badge level + timer */}
-        <CaseHeader caseStudy={caseStudy} />
-
-        {/* 3. Skenario */}
-        <ScenarioSection caseStudy={caseStudy} />
-
-        {/* 4. Dataset */}
-        <DatasetSection caseStudy={caseStudy} datasetRows={datasetRows} />
-
-        {/* 5. Daftar tugas & Kunci Jawaban */}
-        <TasksSection
-          caseStudy={caseStudy}
-          completedTasks={completedTasks}
-          onToggleTask={handleToggleTask}
-          onRegenerateTask={handleRegenerateTask}
-          regeneratingTaskNo={regeneratingTaskNo}
-          regenerateRetryAfterSeconds={regenerateRetryAfterSeconds}
-          onRetryMissingContent={handleRetryMissingContent}
-          isCompletingMissingContent={isCompletingMissingContent}
-          missingContentRetryAfterSeconds={missingContentRetryAfterSeconds}
-          missingContentError={missingContentError}
-        />
-
-        {/* 6. Clue rumus */}
-        <FormulaClues formulas={caseStudy.formulas} />
-
-        {/* 7. Export PDF */}
-        <PDFExportSection caseStudy={caseStudy} datasetRows={datasetRows} />
+        {caseStudy ? (
+          <>
+            <CaseHeader caseStudy={caseStudy} />
+            <ScenarioSection caseStudy={caseStudy} />
+            <DatasetSection caseStudy={caseStudy} datasetRows={datasetRows} />
+            <TasksSection
+              caseStudy={caseStudy}
+              completedTasks={completedTasks}
+              onToggleTask={handleToggleTask}
+              onRegenerateTask={handleRegenerateTask}
+              regeneratingTaskNo={regeneratingTaskNo}
+              regenerateRetryAfterSeconds={regenerateRetryAfterSeconds}
+              onRetryMissingContent={handleRetryMissingContent}
+              isCompletingMissingContent={isCompletingMissingContent}
+              missingContentRetryAfterSeconds={missingContentRetryAfterSeconds}
+              missingContentError={missingContentError}
+            />
+            <FormulaClues formulas={caseStudy.formulas} />
+            <PDFExportSection caseStudy={caseStudy} datasetRows={datasetRows} />
+          </>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-8 text-center">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Siap membuat studi kasus dengan AI</h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              Pilih level, bidang admin, dan industri, lalu tekan Generate. Kasus tidak dibuat dari template lokal.
+            </p>
+          </div>
+        )}
       </main>
 
       {/* Footer */}

@@ -56,7 +56,7 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
    - Model default `openai/gpt-oss-120b`; model utama dan cadangan dapat diatur melalui `GROQ_MODEL` dan `GROQ_FALLBACK_MODEL`.
    - Jumlah tugas dibatasi sesuai level agar respons lebih ringkas: Easy 3–4, Middle 4–5, Advance 4–5.
    - Generate Advance dipisah menjadi tahap kasus dan kunci jawaban. Jika tahap kunci gagal, kasus yang sudah berhasil dibuat tetap dapat digunakan dan kunci dapat dicoba ulang.
-   - Jika Groq mengembalikan 429 saat membuat kasus, aplikasi memakai bank kasus statis hanya untuk kombinasi level, role, industri, gaya rumus, dan jumlah tugas yang tersedia. Kasus cadangan ditandai di header; jika tidak ada kombinasi yang cocok, aplikasi tetap menampilkan error 429. Bank saat ini hanya mencakup role Keuangan/Kasir pada industri Akuntansi dan keuangan, dengan gaya rumus classic dan jumlah tugas terbatas.
+   - Skenario, instruksi tugas, skema dataset, dan kunci jawaban dibuat oleh Groq. Jika respons tidak valid atau tidak selaras dengan role/industri/rumus, aplikasi mengirim ulang prompt koreksi ke AI maksimal dua kali; tidak mengganti kasus dengan template lokal. Jika kuota Groq habis, aplikasi menampilkan error 429.
    - Log pemakaian Groq memuat timestamp UTC. Ekspor log JSONL dari Vercel dapat diringkas per tanggal/level dengan `npm run report:groq -- <path-log-jsonl>`; laporan memuat rata-rata token, kegagalan panggilan provider, dan jumlah 429 tanpa database tambahan.
 
 ---
@@ -77,9 +77,6 @@ generatedstudycaseexceladmin/
 │   │   ├── validator.ts             # Validasi Zod & verifikasi aturan rumus forbidden
 │   │   ├── rate-limit.ts            # Rate limiter berbasis IP memory
 │   │   ├── task-service.ts          # Layanan orkestrasi studi kasus & regenerasi tugas
-│   │   ├── fallbacks.ts             # Template offline fallback untuk semua level
-│   │   ├── case-bank.ts             # Pemilihan kasus statis tervalidasi saat Groq 429
-│   │   └── case-bank.json           # Bank kasus cadangan yang tersedia
 │   │
 │   ├── frontend/                    # FRONTEND (UI Components, Hooks, Client Utilities)
 │   │   ├── components/              # Komponen antarmuka pengguna
@@ -141,7 +138,7 @@ generatedstudycaseexceladmin/
    ```bash
    GROQ_API_KEY=gsk_...
    ```
-   Untuk lokal, simpan pada `.env.local`. Untuk production, atur sebagai environment variable server di Vercel. Generate selalu menggunakan Groq dan tidak menerima API key dari browser atau fallback ke OpenAI.
+   Untuk lokal, simpan pada `.env.local`. Untuk production, atur sebagai environment variable server di Vercel. Generate selalu menggunakan Groq dan tidak menerima API key dari browser atau fallback ke OpenAI maupun template kasus lokal.
 
 4. Jalankan server pengembangan:
    ```bash

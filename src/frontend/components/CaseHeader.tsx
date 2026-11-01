@@ -80,12 +80,6 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
               Level: {levelCfg.label}
             </span>
 
-            {caseStudy.source === 'bank' && (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900">
-                Kasus cadangan (bank statis)
-              </span>
-            )}
-
             {/* Role badge */}
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 flex items-center space-x-1">
               <Tag className="w-3 h-3 text-emerald-600" />
