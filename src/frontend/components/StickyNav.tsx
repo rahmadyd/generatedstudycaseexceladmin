@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { BookOpen, Database, CheckSquare, Lightbulb, KeyRound, Download } from 'lucide-react';
+import { BookOpen, Database, CheckSquare, Lightbulb, Download } from 'lucide-react';
 
 interface StickyNavProps {
   completedCount: number;
@@ -14,11 +14,10 @@ export const StickyNav: React.FC<StickyNavProps> = ({ completedCount, totalTasks
     { href: '#dataset', label: 'Dataset', icon: Database },
     {
       href: '#tugas',
-      label: `Tugas (${completedCount}/${totalTasks})`,
+      label: `Tugas & Kunci (${completedCount}/${totalTasks})`,
       icon: CheckSquare,
     },
     { href: '#clue', label: 'Clue Rumus', icon: Lightbulb },
-    { href: '#kunci-jawaban', label: 'Kunci Jawaban', icon: KeyRound },
     { href: '#download-pdf', label: 'Download PDF', icon: Download },
   ];
 

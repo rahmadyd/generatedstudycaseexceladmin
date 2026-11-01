@@ -61,11 +61,31 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       ],
     },
     answerKey: [
-      { task: 1, formula: '=D2*E2', explanation: 'Mengalikan sel kuantitas dengan harga satuan pada baris aktif.' },
-      { task: 2, formula: '=SUM(F2:F151)', explanation: 'Menjumlahkan seluruh baris kolom Subtotal untuk mendapatkan total omset.' },
-      { task: 3, formula: '=AVERAGE(F2:F151)', explanation: 'Menghitung rata-rata nilai transaksi belanja pelanggan.' },
-      { task: 4, formula: '=MAX(F2:F151) dan =MIN(F2:F151)', explanation: 'Mencari transaksi terbesar dan terkecil di kolom Subtotal.' },
-      { task: 5, formula: '=IF(F2>=500000, "Dapat Voucher 10%", "Non-Voucher")', explanation: 'Fungsi logika IF memeriksa kondisi batas minimum pembelanjaan.' },
+      {
+        task: 1,
+        formula: '=D2*E2',
+        explanation: 'Mengalikan sel Kuantitas (D2) dengan Harga Satuan (E2) pada baris aktif untuk menghitung Subtotal transaksi. Mengapa perkalian langsung? Karena pada baris tunggal, perkalian aritmatika dasar adalah metode paling cepat dan efisien tanpa perlu membebani komputasi.',
+      },
+      {
+        task: 2,
+        formula: '=SUM(F2:F151)',
+        explanation: 'Menjumlahkan seluruh nilai pada rentang Subtotal (F2:F151). Mengapa menggunakan SUM dibanding penambahan manual (F2+F3+...)? Karena SUM secara otomatis mengabaikan teks jika ada sel kosong/rusak dan mampu mengkalkulasi ratusan baris sekaligus secara cepat.',
+      },
+      {
+        task: 3,
+        formula: '=AVERAGE(F2:F151)',
+        explanation: 'Menghitung rata-rata nilai transaksi (basket size) pembeli. Fungsi AVERAGE otomatis menjumlahkan nilai pada rentang F2:F151 lalu membaginya dengan jumlah sel yang berisi angka.',
+      },
+      {
+        task: 4,
+        formula: '=MAX(F2:F151) dan =MIN(F2:F151)',
+        explanation: 'Fungsi MAX mencari nilai nominal transaksi tertinggi dalam periode tersebut, sedangkan MIN mendeteksi transaksi terkecil untuk memantau sebaran daya beli pelanggan.',
+      },
+      {
+        task: 5,
+        formula: '=IF(F2>=500000; "Dapat Voucher 10%"; "Non-Voucher")',
+        explanation: 'Menggunakan fungsi logika IF dengan 3 argumen: (1) Tes Logika F2>=500000 untuk mengecek apakah belanjaan mencapai Rp 500.000; (2) Nilai jika Benar "Dapat Voucher 10%"; (3) Nilai jika Salah "Non-Voucher". Teks diapit petik ganda agar Excel mengenalinya sebagai string.',
+      },
     ],
   },
   middle: {
@@ -133,11 +153,31 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       ],
     },
     answerKey: [
-      { task: 1, formula: '=TRIM(B2)', explanation: 'Menghilangkan whitespace tak kasat mata di awal dan akhir teks kode barang.' },
-      { task: 2, formula: '=IFERROR(VLOOKUP(TRIM(B2), Master_Barang!$A$2:$C$50, 2, FALSE), "Tidak Ada")', explanation: 'Lookup aman dengan proteksi pesan error bila kode tidak terdaftar.' },
-      { task: 3, formula: '=SUMIFS(E2:E181, D2:D181, "Elektronik")', explanation: 'Menjumlahkan Qty_Keluar hanya jika kolom Kategori bernilai Elektronik.' },
-      { task: 4, formula: '=COUNTIFS(F2:F181, "Malam")', explanation: 'Menghitung total baris transaksi yang dijalankan pada shift malam.' },
-      { task: 5, formula: '=LEFT(A2, 3)', explanation: 'Mengambil 3 karakter pertama dari string Nomor PO.' },
+      {
+        task: 1,
+        formula: '=TRIM(B2)',
+        explanation: 'Fungsi TRIM membersihkan spasi tak terlihat di awal dan akhir teks kode barang (leading/trailing space). Mengapa ini krusial bagi admin? Karena di Excel, teks " ELK01 " dan "ELK01" dianggap berbeda, sehingga rumus VLOOKUP akan gagal (#N/A) jika spasi kotor ini tidak dibersihkan terlebih dahulu.',
+      },
+      {
+        task: 2,
+        formula: '=IFERROR(VLOOKUP(TRIM(B2); Master_Barang!$A$2:$C$50; 2; 0); "Tidak Ditemukan")',
+        explanation: 'Bedah argumen VLOOKUP: (1) TRIM(B2) adalah kunci pencarian bersih; (2) Master_Barang!$A$2:$C$50 adalah tabel referensi yang dikunci tanda $ agar tidak bergeser saat ditarik ke bawah; (3) Angka 2 adalah nomor kolom data Nama Barang; (4) Angka 0 (FALSE) artinya EXACT MATCH (wajib 0 agar Excel hanya mengambil barang yang kodenya 100% sama persis; jika diisi 1, Excel bisa salah menarik produk lain!). Fungsi IFERROR membungkus rumus agar jika kode belum terdaftar, tampil keterangan ramah "Tidak Ditemukan".',
+      },
+      {
+        task: 3,
+        formula: '=SUMIFS(E2:E181; D2:D181; "Elektronik")',
+        explanation: 'Fungsi SUMIFS menjumlahkan nilai dengan syarat: Argumen 1 (E2:E181) adalah rentang angka yang dijumlahkan (Qty_Keluar); Argumen 2 (D2:D181) adalah rentang kriteria (Kategori); Argumen 3 ("Elektronik") adalah syarat teks yang dicari. Perhatikan urutan argumen SUMIFS: rentang jumlah selalu di awal!',
+      },
+      {
+        task: 4,
+        formula: '=COUNTIFS(F2:F181; "Malam")',
+        explanation: 'Fungsi COUNTIFS menghitung frekuensi kejadian: F2:F181 adalah kolom Shift, dan "Malam" adalah nilai yang dihitung. Sangat berguna bagi admin untuk rekap absensi atau operasional shift tanpa perlu filter manual.',
+      },
+      {
+        task: 5,
+        formula: '=LEFT(A2; 3)',
+        explanation: 'Fungsi LEFT memotong karakter teks dari sisi paling kiri: A2 adalah sel sumber (Nomor PO), dan angka 3 adalah jumlah karakter yang diambil. Menghasilkan kode cabang (misal "GDK" dari "GDK-2026-0001").',
+      },
     ],
   },
   advance: {

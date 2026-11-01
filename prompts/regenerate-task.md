@@ -23,6 +23,7 @@ CRITICAL RULES:
 - Return ONLY valid JSON with keys: "task" and "answerKey".
 - "task": { "no": {{taskNo}}, "instruction": "...", "hint": "...", "targetResult": "..." }
 - "answerKey": { "task": {{taskNo}}, "formula": "=...", "explanation": "..." }
+- In "answerKey", "explanation" MUST be detailed: jelaskan alasan pemilihan rumus, bedah fungsi tiap argumen, dan terangkan mengapa parameter penting digunakan (misal: kenapa harus 0/FALSE untuk exact match, kenapa ada tanda $ untuk kunci rentang).
 - The formula MUST NOT use any formulas in forbidden list: {{forbiddenFormulas}}!
 - Use Indonesian Excel regional notation in the formula and any formula shown in the hint: use semicolons (`;`) between function arguments and commas (`,`) for decimal values. Keep English function names and do not change commas inside quoted text.
 - Follow Formula Reference Style: Classic uses only cell/range references, not table column names. Modern uses structured references with the actual table/header names; follow the @ setting above for current-row versus whole-column references.

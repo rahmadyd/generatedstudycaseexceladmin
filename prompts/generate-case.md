@@ -35,6 +35,11 @@ Parameters:
 - Do NOT make fake download links! The dataset schema will be used by our code generator to create the real XLSX/CSV file.
 - Provide a clear, realistic Indonesian administrative scenario.
 - In `answerKey`, each formula MUST NOT use any formulas listed under `forbidden`.
+- In `answerKey`, the `explanation` MUST be a thorough educational explanation:
+  1) Alasan mengapa rumus/fungsi ini yang paling tepat digunakan untuk kasus tersebut.
+  2) Bedah setiap argumen/komponen rumus (misal: apa yang dicari, tabel mana yang diacu, kenapa memakai tanda $ untuk mengunci sel/rentang).
+  3) Jelaskan secara gamblang parameter penting (misal: mengapa ada angka 0 / FALSE pada VLOOKUP/MATCH untuk Exact Match, dan mengapa jika tidak diisi 0 bisa salah data).
+  4) Tips praktis agar tidak error (seperti penggunaan titik koma ; dan pembersihan spasi).
 - Use Indonesian Excel regional notation in every formula example, hint, and answer key: use semicolons (`;`) between function arguments and commas (`,`) for decimal values. Keep English function names. For example: `=IF(A1>0; 1,5; 0)` and `=SUMIFS(C:C; A:A; "Jakarta")`. Do not change commas inside quoted text.
 - Match every formula, hint, and answer key to Formula Reference Style. Classic MUST use cell/range references (for example `C2`, `$D$2:$D$100`) and must not use structured table column names. Modern MUST use structured references with the actual table and header names (for example `TabelData[Qty Masuk]`); when using a row-level reference, {{structuredReferenceAt}} specifies whether to use `[@[Nama Kolom]]` (current row) or `[Nama Kolom]` (whole table column). Choose references appropriate to the operation, and do not invent columns absent from the dataset.
 - `dataTraps` should be an array of strings (e.g. ["Spasi berlebih pada kode barang", "Tanggal tersimpan sebagai teks"]).

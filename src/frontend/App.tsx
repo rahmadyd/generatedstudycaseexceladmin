@@ -9,8 +9,6 @@ import { ScenarioSection } from './components/ScenarioSection';
 import { DatasetSection } from './components/DatasetSection';
 import { TasksSection } from './components/TasksSection';
 import { FormulaClues } from './components/FormulaClues';
-import { FormulaPracticeSection } from './components/FormulaPracticeSection';
-import { AnswerKeySection } from './components/AnswerKeySection';
 import { PortfolioSection } from './components/PortfolioSection';
 import { PDFExportSection } from './components/PDFExportSection';
 import { HistoryModal } from './components/HistoryModal';
@@ -298,7 +296,7 @@ export default function App() {
         {/* 4. Dataset */}
         <DatasetSection caseStudy={caseStudy} datasetRows={datasetRows} />
 
-        {/* 5. Daftar tugas (checklist) */}
+        {/* 5. Daftar tugas & Kunci Jawaban */}
         <TasksSection
           caseStudy={caseStudy}
           completedTasks={completedTasks}
@@ -310,9 +308,6 @@ export default function App() {
         {/* 6. Clue rumus */}
         <FormulaClues formulas={caseStudy.formulas} />
 
-        {/* 6a. Latihan rumus Classic dan Modern */}
-        <FormulaPracticeSection caseStudy={caseStudy} />
-
         {/* Mode Portofolio (Khusus Level Portofolio) */}
         {caseStudy.level === 'portfolio' && (
           <PortfolioSection
@@ -321,10 +316,7 @@ export default function App() {
           />
         )}
 
-        {/* 7. Kunci jawaban */}
-        <AnswerKeySection answerKey={caseStudy.answerKey} />
-
-        {/* 8. Export PDF */}
+        {/* 7. Export PDF */}
         <PDFExportSection caseStudy={caseStudy} datasetRows={datasetRows} />
       </main>
 

@@ -11,8 +11,16 @@ import {
   Trophy,
   Copy,
   Check,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Terminal,
+  Lightbulb,
+  Info,
 } from 'lucide-react';
 import { CaseStudy, Task } from '@/shared/schema';
+import { normalizeExcelFormulaLocale } from '@/shared/excel-formula-locale';
+import { analyzeFormula } from '../utils/formula-explainer';
 
 interface TasksSectionProps {
   caseStudy: CaseStudy;
@@ -30,6 +38,8 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
   regeneratingTaskNo,
 }) => {
   const [copiedTask, setCopiedTask] = useState<number | null>(null);
+  const [copiedFormulaTask, setCopiedFormulaTask] = useState<number | null>(null);
+  const [revealedKeys, setRevealedKeys] = useState<number[]>([]);
 
   const total = caseStudy.tasks.length;
   const completedCount = completedTasks.length;
@@ -57,9 +67,30 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
     setTimeout(() => setCopiedTask(null), 2000);
   };
 
+  const handleCopyFormula = (taskNo: number, formula: string) => {
+    navigator.clipboard.writeText(formula);
+    setCopiedFormulaTask(taskNo);
+    setTimeout(() => setCopiedFormulaTask(null), 2000);
+  };
+
+  const toggleRevealKey = (taskNo: number) => {
+    setRevealedKeys((prev) =>
+      prev.includes(taskNo) ? prev.filter((n) => n !== taskNo) : [...prev, taskNo]
+    );
+  };
+
+  const toggleAllKeys = () => {
+    if (revealedKeys.length === total) {
+      setRevealedKeys([]);
+    } else {
+      setRevealedKeys(caseStudy.tasks.map((t) => t.no));
+    }
+  };
+
   return (
     <section id="tugas" className="scroll-mt-32">
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-200 dark:border-gray-700">
+        {/* Section Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div className="flex items-center space-x-2.5">
             <div className="p-2 bg-emerald-100 dark:bg-emerald-950/60 rounded-xl text-emerald-700 dark:text-emerald-300">
@@ -67,29 +98,51 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                4. Daftar Tugas & Target Output
+                4. Daftar Tugas, Target & Kunci Jawaban
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Centang setiap instruksi yang telah berhasil dikerjakan di Excel.
+                Kerjakan tugas langsung di Excel. Buka kunci jawaban di bawah tiap tugas untuk melihat rumus dan bedah penjelasannya.
               </p>
             </div>
           </div>
 
-          {/* Progress bar pill */}
-          <div className="bg-gray-50 dark:bg-gray-900/60 p-3 rounded-xl border border-gray-200 dark:border-gray-700 min-w-[220px]">
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="font-semibold text-gray-700 dark:text-gray-300">
-                {completedCount} dari {total} tugas selesai
-              </span>
-              <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                {progressPercent}%
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
-              <div
-                className="bg-emerald-600 h-2.5 rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${progressPercent}%` }}
-              />
+          <div className="flex items-center space-x-3">
+            {/* Toggle All Keys button */}
+            <button
+              type="button"
+              onClick={toggleAllKeys}
+              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition"
+              title="Buka atau sembunyikan semua kunci jawaban sekaligus"
+            >
+              {revealedKeys.length === total ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5" />
+                  <span>Tutup Semua Kunci</span>
+                </>
+              ) : (
+                <>
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Buka Semua Kunci</span>
+                </>
+              )}
+            </button>
+
+            {/* Progress bar pill */}
+            <div className="bg-gray-50 dark:bg-gray-900/60 p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 min-w-[180px]">
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="font-semibold text-gray-700 dark:text-gray-300">
+                  {completedCount}/{total} Selesai
+                </span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                  {progressPercent}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-emerald-600 h-2 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -103,24 +156,28 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
             <div>
               <h4 className="font-bold text-sm">Luar Biasa! Semua Tugas Selesai</h4>
               <p className="text-xs text-emerald-800 dark:text-emerald-300">
-                Anda telah menyelesaikan seluruh skenario tugas admin ini. Cocokkan hasil perhitungan dengan Kunci Jawaban di bawah.
+                Anda telah menyelesaikan seluruh skenario tugas admin ini. Cocokkan hasil perhitungan dengan Kunci Jawaban di setiap tugas.
               </p>
             </div>
           </div>
         )}
 
         {/* Task Cards List */}
-        <div className="space-y-4">
+        <div className="space-y-5">
           {caseStudy.tasks.map((task) => {
             const isCompleted = completedTasks.includes(task.no);
             const isRegenerating = regeneratingTaskNo === task.no;
+            const isKeyOpen = revealedKeys.includes(task.no);
+            const answerItem = caseStudy.answerKey.find((a) => a.task === task.no);
+            const normalizedFormula = answerItem ? normalizeExcelFormulaLocale(answerItem.formula) : '';
+            const breakdown = answerItem ? analyzeFormula(answerItem.formula) : null;
 
             return (
               <div
                 key={task.no}
                 className={`p-4 sm:p-5 rounded-xl border transition-all ${
                   isCompleted
-                    ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/15'
+                    ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/15'
                     : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/80 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
@@ -208,6 +265,125 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
                     </span>
                   </button>
                 </div>
+
+                {/* Inline Answer Key & Formula Breakdown Toggle */}
+                {answerItem && (
+                  <div className="mt-3.5 pt-3 border-t border-gray-100 dark:border-gray-700/60">
+                    <button
+                      type="button"
+                      onClick={() => toggleRevealKey(task.no)}
+                      className="flex items-center space-x-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 transition"
+                    >
+                      {isKeyOpen ? (
+                        <>
+                          <EyeOff className="w-3.5 h-3.5" />
+                          <span>Sembunyikan Kunci &amp; Bedah Rumus</span>
+                        </>
+                      ) : (
+                        <>
+                          <KeyRound className="w-3.5 h-3.5" />
+                          <span>Lihat Kunci Jawaban &amp; Bedah Rumus</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Revealed Answer Key Details */}
+                    {isKeyOpen && (
+                      <div className="mt-3 p-4 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/60 rounded-xl space-y-3 animate-fadeIn">
+                        {/* Formula Bar with Copy */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-bold text-amber-900 dark:text-amber-200 flex items-center space-x-1">
+                            <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Kunci Rumus Excel:</span>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCopyFormula(task.no, normalizedFormula)}
+                            className="flex items-center space-x-1 text-xs text-emerald-700 dark:text-emerald-400 hover:underline font-medium"
+                            title="Salin formula ke clipboard"
+                          >
+                            {copiedFormulaTask === task.no ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Tersalin!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Salin Rumus</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Monospace Code Box */}
+                        <div className="flex items-center space-x-2 bg-gray-900 text-emerald-400 px-3.5 py-2.5 rounded-lg font-mono text-xs sm:text-sm overflow-x-auto border border-gray-800">
+                          <Terminal className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <code>{normalizedFormula}</code>
+                        </div>
+
+                        {/* Alasan Pemilihan Rumus */}
+                        {breakdown?.reason && (
+                          <div className="flex items-start space-x-2 text-xs text-gray-700 dark:text-gray-300 bg-white/70 dark:bg-gray-800/70 p-2.5 rounded-lg border border-amber-100 dark:border-gray-700">
+                            <Lightbulb className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-bold text-amber-900 dark:text-amber-200">
+                                Mengapa memakai rumus ini?{' '}
+                              </span>
+                              <span>{breakdown.reason}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Contextual Explanation from AI */}
+                        {answerItem.explanation && (
+                          <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed pl-1">
+                            <span className="font-bold text-gray-900 dark:text-white">
+                              Penjelasan Logika Soal:{' '}
+                            </span>
+                            <span>{answerItem.explanation}</span>
+                          </div>
+                        )}
+
+                        {/* Bedah Komponen & Argumen Rumus (e.g. Kenapa 0 / FALSE, Kenapa $, Kenapa ;) */}
+                        {breakdown && breakdown.argumentsHelp.length > 0 && (
+                          <div className="pt-2 border-t border-amber-200/60 dark:border-amber-900/40 space-y-2">
+                            <span className="text-[11px] font-bold text-amber-950 dark:text-amber-200 flex items-center space-x-1">
+                              <Info className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Bedah Bagian &amp; Argumen Rumus:</span>
+                            </span>
+
+                            <div className="grid grid-cols-1 gap-2">
+                              {breakdown.argumentsHelp.map((arg, idx) => (
+                                <div
+                                  key={idx}
+                                  className="p-2.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs space-y-1"
+                                >
+                                  <div className="flex items-center space-x-2">
+                                    <span
+                                      className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] border ${
+                                        arg.badgeColor || 'bg-gray-100 text-gray-800 border-gray-300'
+                                      }`}
+                                    >
+                                      {arg.term}
+                                    </span>
+                                    <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                      {arg.label}
+                                    </span>
+                                  </div>
+                                  <p className="text-gray-600 dark:text-gray-400 text-[11px] leading-relaxed pl-0.5">
+                                    {arg.explanation}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
