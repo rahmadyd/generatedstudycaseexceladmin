@@ -57,7 +57,7 @@ export function saveCaseToHistory(caseStudy: CaseStudy): void {
 // Settings
 export function getSavedSettings(): SavedSettings {
   const defaults: SavedSettings = {
-    level: 'middle',
+    level: 'easy',
     role: 'Penjualan',
     excelVersion: 'Microsoft 365',
     taskCount: 5,

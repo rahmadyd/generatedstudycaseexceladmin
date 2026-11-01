@@ -29,7 +29,7 @@ import {
 import { AlertCircle } from 'lucide-react';
 
 export default function App() {
-  const [caseStudy, setCaseStudy] = useState<CaseStudy>(FALLBACK_CASES.middle);
+  const [caseStudy, setCaseStudy] = useState<CaseStudy>(FALLBACK_CASES.easy);
   const [completedTasks, setCompletedTasks] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export default function App() {
 
         // Else generate with that seed
         handleGenerate({
-          level: urlLevel || 'middle',
+          level: urlLevel || 'easy',
           role: urlRole || 'Penjualan',
           excelVersion: 'Microsoft 365',
           industry: urlIndustry === 'Acak' || INDUSTRY_OPTIONS.includes(urlIndustry as (typeof INDUSTRY_OPTIONS)[number])

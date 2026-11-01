@@ -23,7 +23,7 @@ interface GenerateFormProps {
 export const GenerateForm: React.FC<GenerateFormProps> = ({
   onGenerate,
   isLoading,
-  initialLevel = null,
+  initialLevel = 'easy',
   initialRole = 'Penjualan',
   initialExcelVersion = 'Microsoft 365',
   initialFormulaStyle = 'classic',
@@ -32,7 +32,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   initialTaskCount = 5,
   initialTaskCountMode = 'auto',
 }) => {
-  const [level, setLevel] = useState<Level | null>(initialLevel ?? null);
+  const [level, setLevel] = useState<Level | null>(initialLevel ?? 'easy');
   const [role, setRole] = useState<string>(initialRole);
   const [useRecommendedRole, setUseRecommendedRole] = useState(false);
   const [excelVersion, setExcelVersion] = useState<ExcelVersion>(initialExcelVersion);
@@ -45,7 +45,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
   useEffect(() => {
-    setLevel(initialLevel ?? null);
+    setLevel(initialLevel ?? 'easy');
     setRole(initialRole);
     setUseRecommendedRole(false);
     setExcelVersion(initialExcelVersion);
