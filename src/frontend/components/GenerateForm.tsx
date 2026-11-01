@@ -4,8 +4,15 @@ import React, { useEffect, useState } from 'react';
 import { Sparkles, Sliders, RefreshCw, AlertCircle, Info } from 'lucide-react';
 import { Level, ExcelVersion, FormulaStyle, GenerateRequest, INDUSTRY_OPTIONS, Industry, TaskCountMode } from '@/shared/schema';
 import { ADMIN_ROLES, getRecommendedAdminRole, getRecommendedTaskCount, LEVEL_CONFIG } from '@/shared/constants';
+import { GENERATION_CONFIG, getTaskCountOptions } from '@/shared/generation-config';
 
 const AUTO_ADMIN_ROLE = 'recommended';
+
+function normalizeTaskCount(level: Level | null, taskCount: number): number {
+  if (!level) return 4;
+  const config = GENERATION_CONFIG[level];
+  return config.taskCountOptions.includes(taskCount) ? taskCount : config.defaultTasks;
+}
 
 interface GenerateFormProps {
   onGenerate: (req: GenerateRequest) => Promise<void>;
@@ -40,7 +47,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   const [structuredReferenceAt, setStructuredReferenceAt] = useState(initialStructuredReferenceAt);
   const [industry, setIndustry] = useState<Industry>(initialIndustry);
   const [taskCount, setTaskCount] = useState<number>(
-    [5, 8, 10, 15, 20].includes(initialTaskCount) ? initialTaskCount : 5
+    normalizeTaskCount(initialLevel ?? 'easy', initialTaskCount)
   );
   const [taskCountMode, setTaskCountMode] = useState<TaskCountMode>(initialTaskCountMode ?? 'manual');
   const [cooldown, setCooldown] = useState<number>(0);
@@ -54,7 +61,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
     setFormulaStyle(initialFormulaStyle);
     setStructuredReferenceAt(initialStructuredReferenceAt);
     setIndustry(initialIndustry);
-    setTaskCount([5, 8, 10, 15, 20].includes(initialTaskCount) ? initialTaskCount : 5);
+    setTaskCount(normalizeTaskCount(initialLevel ?? 'easy', initialTaskCount));
     setTaskCountMode('manual');
   }, [initialExcelVersion, initialFormulaStyle, initialIndustry, initialLevel, initialRole, initialStructuredReferenceAt, initialTaskCount, initialTaskCountMode]);
 
@@ -65,7 +72,8 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   const effectiveRole = useRecommendedRole ? recommendedRole : role;
   const recommendedRoleOption = ADMIN_ROLES.find((item) => item.id === recommendedRole);
   const selectedRoleOption = ADMIN_ROLES.find((item) => item.id === effectiveRole);
-  const effectiveTaskCount = [5, 8, 10, 15, 20].includes(taskCount) ? taskCount : 5;
+  const effectiveTaskCount = normalizeTaskCount(level, taskCount);
+  const taskCountOptions = level ? getTaskCountOptions(level) : [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -332,25 +340,21 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
                   Jumlah Tugas
                 </label>
                 <select
-                  value={taskCount}
+                  value={effectiveTaskCount}
                   onChange={(event) => {
                     setTaskCount(Number(event.target.value));
                     setTaskCountMode('manual');
                   }}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium"
                 >
-                  <option value={5}>5 (Standar)</option>
-                  <option value={8}>8 (Intensif)</option>
-                  <option value={10}>10 (Latihan Penuh)</option>
-                  <option value={15}>15 (Maraton)</option>
-                  <option value={20}>20 (Simulasi Tes Admin)</option>
+                  {taskCountOptions.map((count) => (
+                    <option key={count} value={count}>
+                      {count} tugas{count === GENERATION_CONFIG[level!].defaultTasks ? ' (Rekomendasi)' : ''}
+                    </option>
+                  ))}
                 </select>
                 <p className="mt-1.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
-                  {taskCount === 5 && 'Standar latihan komprehensif untuk penguasaan rumus harian.'}
-                  {taskCount === 8 && 'Latihan intensif dengan variasi kasus operasional yang lebih beragam.'}
-                  {taskCount === 10 && 'Paket latihan lengkap untuk menguji berbagai skenario olah data.'}
-                  {taskCount === 15 && 'Tantangan maraton untuk menguji ketelitian dan kecepatan analisis data.'}
-                  {taskCount === 20 && 'Simulasi ujian tes masuk admin lengkap skala industri nyata.'}
+                  Jumlah tugas dibatasi sesuai level agar kunci jawaban tetap fokus dan proses generate lebih ringan.
                 </p>
               </div>
 

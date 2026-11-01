@@ -1,4 +1,5 @@
 import { CaseStudy, Level, ExcelVersion, FormulaStyle, Industry, TaskCountMode } from '@/shared/schema';
+import { GENERATION_CONFIG } from '@/shared/generation-config';
 
 const STORAGE_KEYS = {
   HISTORY: 'excel_admin_cases_history',
@@ -68,8 +69,8 @@ export function getSavedSettings(): SavedSettings {
   };
   const saved = safeGetStorage<Partial<SavedSettings>>(STORAGE_KEYS.SETTINGS, {});
   const merged = { ...defaults, ...saved };
-  if (![5, 8, 10, 15, 20].includes(merged.taskCount)) {
-    merged.taskCount = 5;
+  if (!GENERATION_CONFIG[merged.level].taskCountOptions.includes(merged.taskCount)) {
+    merged.taskCount = GENERATION_CONFIG[merged.level].defaultTasks;
   }
   return merged;
 }

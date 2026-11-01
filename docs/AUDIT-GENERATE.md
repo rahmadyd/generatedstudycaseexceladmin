@@ -33,3 +33,11 @@ Jangan menambahkan API key, header Authorization, atau isi prompt ke log.
 ## Baseline token
 
 **Belum tersedia saat audit kode.** Pengukuran membutuhkan permintaan nyata setelah instrumentasi ini dideploy ke Vercel. Setelah itu, salin nilai `usage.total_tokens` per request dari Vercel Function Logs untuk mencatat rata-rata Easy sebelum optimasi token. Jangan menganggap angka `max_tokens` sebagai pemakaian aktual.
+
+## Optimasi fase 1
+
+- Batas output konfigurasi: Easy 1.200, Middle 1.800, Advance 2.500 token; Portfolio tetap 7.500 sementara menunggu pemecahan tahap.
+- Jumlah tugas: Easy 3–4, Middle 4–5, Advance 4–5. Portfolio tetap dapat dipilih 5–20 tugas.
+- Hint dan penjelasan kunci dibatasi panjangnya lewat `src/shared/generation-config.ts`; prompt dipadatkan dan schema keluaran dibuat ringkas.
+- Model default sekarang `openai/gpt-oss-120b`; model reasoning menerima `reasoning_effort: low`. `GROQ_MODEL` tetap dapat menimpa model default.
+- Pengukuran aktual sebelum/sesudah tetap pending sampai log token produksi tersedia. Batas `max_tokens` adalah batas keluaran, bukan token aktual yang digunakan.

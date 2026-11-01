@@ -54,6 +54,8 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
 9. **Integrasi Groq API**:
    - Generate menggunakan hanya `GROQ_API_KEY` dari environment variable server.
    - API key tidak dikirim dari browser atau disimpan di `localStorage`; OpenAI tidak digunakan sebagai fallback.
+   - Model default `openai/gpt-oss-120b`; model utama dan cadangan dapat diatur melalui `GROQ_MODEL` dan `GROQ_FALLBACK_MODEL`.
+   - Jumlah tugas dibatasi sesuai level agar respons lebih ringkas: Easy 3–4, Middle 4–5, Advance 4–5.
 
 ---
 
@@ -165,6 +167,12 @@ Di project Vercel, buka **Settings → Environment Variables** dan tambahkan:
 - Value: API key dari Groq
 
 Pilih environment yang digunakan (Production/Preview/Development), simpan, lalu redeploy agar variable diterapkan. Aplikasi hanya memakai `GROQ_API_KEY` server dan endpoint Groq.
+
+Variabel model opsional:
+- `GROQ_MODEL`: model utama; default `openai/gpt-oss-120b`.
+- `GROQ_FALLBACK_MODEL`: model alternatif Groq. Sebaiknya berbeda dari model utama agar fallback punya kuota model tersendiri. Jika tidak disetel, fallback dinonaktifkan.
+
+Model `gpt-oss` dikirim dengan `reasoning_effort: low`. Untuk model lain, parameter tersebut tidak dikirim.
 
 ---
 

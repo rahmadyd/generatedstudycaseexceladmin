@@ -2,6 +2,25 @@ import fs from 'fs';
 import path from 'path';
 import { GenerateRequest, Industry, Level } from '../shared/schema';
 import { ADMIN_ROLES, getRecommendedTaskCount, INDUSTRY_PROFILES, LEVEL_CONFIG, M365_ONLY_FORMULAS, ROLE_PROFILES, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
+import { GENERATION_CONFIG } from '../shared/generation-config';
+
+const COMPACT_DEFAULT_GENERATE_PROMPT = `You design practical Excel case studies for Indonesian administrative work. Return compact JSON only.
+Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}}
+Context: {{companyName}}; {{theme}}; {{period}}. Industry guidance: {{industryProfile}}
+Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
+Task count: exactly {{taskCount}} | Seed: {{seed}} | Formula policy: {{levelFormulaPolicy}}
+Keep hints within {{hintMaxChars}} characters and explanations within {{explanationMaxChars}} characters.
+Rules: Indonesian; role/industry-specific; dataset schema is the only source sheet; match every instruction, hint, target, formula, and condition; use only allowed formulas and available columns; conditional aggregates must implement every criterion; formula tasks need one copyable formula; no fixed results for random data; exactly {{taskCount}} tasks and matching keys. Easy/Middle/Advance omit portfolio fields. Portfolio includes rubric and portfolioBrief.
+Use Indonesian Excel separators (semicolons; English function names). Return compact JSON, no markdown or unused fields, with this shape:
+{"title":"string","scenario":"string","tasks":[{"no":1,"instruction":"string","hint":"string","targetResult":"string"}],"dataTraps":["string"],"formulas":{"recommended":["string"],"allowed":["string"],"forbidden":["string"]},"dataset":{"sheetName":"string","rows":150,"columns":[{"name":"string","type":"date|text|number|int|currency|enum","values":["..."],"range":[1,100]}]},"answerKey":[{"task":1,"formula":"=FORMULA(...)","explanation":"string"}],"rubric":["string"],"portfolioBrief":{"clientBrief":"string","deliverables":["string"],"readmeTemplate":"string"}}`;
+const COMPACT_DEFAULT_REGENERATE_TASK_PROMPT = `Regenerate only task {{taskNo}} and its matching answer for this Indonesian Excel case.
+Case: {{title}} | Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}} | Scenario: {{scenario}}
+Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
+Recommended: {{recommendedFormulas}} | Forbidden: {{forbiddenFormulas}} | Available columns: {{columns}}
+Old instruction: {{oldInstruction}}
+Keep the hint within {{hintMaxChars}} characters and explanation within {{explanationMaxChars}} characters.
+Return compact JSON only. The instruction, hint, target, formula, and explanation must agree. Apply every stated condition; use only available columns and allowed formulas. One source-data sheet only. Formula tasks need one copyable formula; procedural tasks need concise steps. Use semicolons and English function names. Classic references cells/ranges; Modern uses structured references.
+{"task":{"no":{{taskNo}},"instruction":"string","hint":"string","targetResult":"string"},"answerKey":{"task":{{taskNo}},"formula":"=...","explanation":"string"}}`;
 
 const DEFAULT_GENERATE_PROMPT = `You are an expert curriculum designer and administrative business analyst who designs realistic Excel case studies for administrative roles in Indonesia.
 Your job is to generate a comprehensive, realistic Excel practice case study tailored to the given specifications.
@@ -186,9 +205,9 @@ export function loadPromptTemplate(templateName: string): string {
   }
 
   if (templateName === 'regenerate-task.md') {
-    return DEFAULT_REGENERATE_TASK_PROMPT;
+    return COMPACT_DEFAULT_REGENERATE_TASK_PROMPT;
   }
-  return DEFAULT_GENERATE_PROMPT;
+  return COMPACT_DEFAULT_GENERATE_PROMPT;
 }
 
 export function compileGeneratePrompt(req: GenerateRequest, seed: string): string {
@@ -216,7 +235,7 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
         ? `${roleOption.label}: ${roleOption.desc}`
         : req.role,
     '{{industry}}': industry,
-    '{{industryProfile}}': `${industryProfile.focus}. Contoh komoditas/produk/layanan yang sesuai: ${industryProfile.products.join(', ')}. Kategori yang sesuai: ${industryProfile.categories.join(', ')}. Gunakan hanya yang relevan.`,
+    '{{industryProfile}}': `${industryProfile.focus}. Contoh: ${industryProfile.products.slice(0, 3).join(', ')}.`,
     '{{levelFormulaPolicy}}': `Direkomendasikan: ${formulaPolicy.recommended.join(', ')}. Dilarang: ${Array.from(new Set([...formulaPolicy.forbidden, ...versionForbiddenFormulas])).join(', ')}.`,
     '{{excelVersion}}': req.excelVersion,
     '{{formulaStyle}}': req.formulaStyle === 'modern' ? 'Modern (structured references)' : 'Classic (cell/range references)',
@@ -227,6 +246,8 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
     '{{theme}}': theme,
     '{{period}}': period,
     '{{taskCount}}': String(taskCount || 5),
+    '{{hintMaxChars}}': String(GENERATION_CONFIG[req.level].hintMaxChars),
+    '{{explanationMaxChars}}': String(GENERATION_CONFIG[req.level].explanationMaxChars),
     '{{seed}}': seed,
   };
 
@@ -248,9 +269,16 @@ export function resolveTaskCount(
   req: Pick<GenerateRequest, 'level' | 'taskCountMode' | 'taskCount'>,
   industry: Exclude<Industry, 'Acak'>,
 ): number {
-  return req.taskCountMode === 'manual'
-    ? req.taskCount
-    : getRecommendedTaskCount(req.level, industry);
+  const config = GENERATION_CONFIG[req.level];
+  if (req.taskCountMode !== 'manual') {
+    return getRecommendedTaskCount(req.level, industry);
+  }
+  if (!config.taskCountOptions.includes(req.taskCount)) {
+    throw new Error(
+      `Jumlah tugas untuk level ${req.level} harus ${config.taskCountOptions.join(' atau ')}.`,
+    );
+  }
+  return req.taskCount;
 }
 
 export function compileRegenerateTaskPrompt(params: {
@@ -294,6 +322,8 @@ export function compileRegenerateTaskPrompt(params: {
     '{{columns}}': params.columns.join(', '),
     '{{taskNo}}': String(params.taskNo),
     '{{oldInstruction}}': params.oldInstruction,
+    '{{hintMaxChars}}': String(GENERATION_CONFIG[params.level].hintMaxChars),
+    '{{explanationMaxChars}}': String(GENERATION_CONFIG[params.level].explanationMaxChars),
   };
 
   let compiled = template;

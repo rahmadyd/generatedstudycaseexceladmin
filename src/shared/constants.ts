@@ -1,4 +1,5 @@
 import { INDUSTRY_OPTIONS, Industry, Level, ExcelVersion } from './schema';
+import { GENERATION_CONFIG } from './generation-config';
 
 export const ADMIN_ROLES = [
   { id: 'Penjualan', label: 'Admin Penjualan', desc: 'Order, pelanggan, penjualan, dan piutang' },
@@ -305,31 +306,8 @@ export const ROLE_PROFILES: Record<string, { label: string; description: string;
   }]),
 ) as Record<string, { label: string; description: string; signals: string[] }>;
 
-const MULTI_PROCESS_INDUSTRIES = new Set<Industry>([
-  'Kelapa sawit',
-  'Pertambangan batu bara',
-  'Perkebunan',
-  'Perikanan',
-  'Peternakan',
-  'Pertanian dan pangan',
-  'Kehutanan dan kayu',
-  'Manufaktur',
-  'Konstruksi',
-  'Logistik dan ekspedisi',
-  'Distribusi dan perdagangan',
-  'Retail dan minimarket',
-  'E-commerce',
-  'Perbankan',
-  'Leasing',
-  'Asuransi',
-  'Kesehatan: rumah sakit, klinik, apotek',
-  'Energi dan listrik',
-]);
-
-export function getRecommendedTaskCount(level: Level, industry: Industry): number {
-  if (level === 'advance' || level === 'portfolio') return 6;
-  if (level === 'easy') return MULTI_PROCESS_INDUSTRIES.has(industry) ? 5 : 4;
-  return MULTI_PROCESS_INDUSTRIES.has(industry) ? 6 : 5;
+export function getRecommendedTaskCount(level: Level, _industry: Industry): number {
+  return GENERATION_CONFIG[level].defaultTasks;
 }
 
 export const SAMPLE_COMPANIES = [

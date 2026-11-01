@@ -70,7 +70,7 @@ function getGroqApiKey(): string | null {
 
 function getGroqPrimaryModel(): string {
   const configured = process.env.GROQ_MODEL?.trim();
-  return configured && configured.length > 0 ? configured : 'llama-3.3-70b-versatile';
+  return configured && configured.length > 0 ? configured : 'openai/gpt-oss-120b';
 }
 
 function getGroqFallbackModel(primaryModel?: string): string {
@@ -106,6 +106,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
       messages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 3500,
+      ...(m.toLocaleLowerCase('en').includes('gpt-oss') ? { reasoning_effort: 'low' } : {}),
       ...(options.jsonMode === false ? {} : { response_format: { type: 'json_object' } }),
     });
 

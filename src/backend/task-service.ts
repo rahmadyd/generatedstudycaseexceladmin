@@ -4,6 +4,7 @@ import { CaseStudy, GenerateRequest, RegenerateTaskRequest, Task } from '../shar
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
 import { compileGeneratePrompt, compileRegenerateTaskPrompt, resolveIndustry, resolveTaskCount } from './prompts';
 import { callGroqChat } from './groq';
+import { GENERATION_CONFIG, GENERATION_REPAIR_ATTEMPTS } from '../shared/generation-config';
 import {
   getCaseStudyAlignmentIssues,
   getTaskAnswerAlignmentIssues,
@@ -28,20 +29,18 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
   const industry = resolveIndustry(req.industry, seed);
   const taskCount = resolveTaskCount(req, industry);
   const prompt = compileGeneratePrompt({ ...req, industry }, seed);
-  const maxRetries = 2;
   const requestId = randomUUID();
   let lastError: unknown;
   let retryGuidance = '';
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= GENERATION_REPAIR_ATTEMPTS; attempt++) {
     try {
       // apiKey tidak di-pass → ai-client otomatis baca dari process.env.GROQ_API_KEY
       const rawResponse = await callGroqChat({
-        systemPrompt:
-          'You are an expert Indonesian administrative business analyst and Excel educator. You output only valid JSON matching the exact schema requested.',
+        systemPrompt: 'Create a practical Excel case in Indonesian. Return compact JSON only in the requested schema.',
         userPrompt: `${prompt}${retryGuidance}`,
         temperature: 0.65 + attempt * 0.1,
-        maxTokens: taskCount >= 15 ? 7500 : (taskCount >= 10 ? 5000 : 3800),
+        maxTokens: GENERATION_CONFIG[req.level].maxTokens,
         requestId,
         callNumber: attempt + 1,
         level: req.level,
@@ -141,9 +140,10 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
 
   // apiKey tidak di-pass → ai-client otomatis baca dari process.env.GROQ_API_KEY
   const rawResponse = await callGroqChat({
-    systemPrompt: 'You regenerate a single Excel task. Output strictly valid JSON.',
+    systemPrompt: 'Regenerate one practical Excel task in Indonesian. Return compact JSON only in the requested schema.',
     userPrompt: prompt,
     temperature: 0.75,
+    maxTokens: GENERATION_CONFIG[caseStudy.level].regenerateMaxTokens,
     requestId: randomUUID(),
     callNumber: 1,
     level: caseStudy.level,

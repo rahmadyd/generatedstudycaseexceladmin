@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GenerateRequestSchema } from '@/shared/schema';
 import { generateCaseStudyService } from '@/backend/task-service';
 import { checkRateLimit } from '@/backend/rate-limit';
+import { GENERATION_CONFIG } from '@/shared/generation-config';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -29,7 +30,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const caseStudy = await generateCaseStudyService(parseResult.data);
+    const request = parseResult.data;
+    const taskCountConfig = GENERATION_CONFIG[request.level];
+    if (
+      request.taskCountMode === 'manual' &&
+      !taskCountConfig.taskCountOptions.includes(request.taskCount)
+    ) {
+      return NextResponse.json(
+        {
+          error: `Jumlah tugas untuk level ${request.level} harus ${taskCountConfig.taskCountOptions.join(' atau ')}.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const caseStudy = await generateCaseStudyService(request);
     return NextResponse.json({ success: true, caseStudy });
   } catch (error) {
     console.error('API /api/generate error:', error);
