@@ -99,8 +99,44 @@ export function analyzeFormula(rawFormula: string): FormulaBreakdown {
     return endIdx !== -1 ? formula.substring(openParen + 1, endIdx) : '';
   };
 
+  // --- 0. SUM(IF(...; 1; 0)) -> Array Counter Pattern ---
+  if (formulaUpper.includes('SUM(IF(') || /SUM\s*\(\s*IF\s*\(/.test(formulaUpper)) {
+    reason =
+      'Menggunakan teknik Array Counter (kombinasi SUM + IF) untuk menghitung banyaknya baris yang memenuhi syarat tertentu dengan mengubah hasil logika (TRUE/FALSE) menjadi angka 1 dan 0.';
+    pattern = '=SUM( IF( kondisi_syarat ; 1 ; 0 ) )';
+    patternDescription =
+      'Setiap baris diuji: jika kondisi bernilai BENAR (TRUE), IF memberi angka 1. Jika SALAH (FALSE), IF memberi angka 0. Kemudian SUM menjumlahkan semua angka 1 tersebut sehingga kita mendapatkan total baris yang lolos kriteria.';
+
+    const ifInner = getInner('IF');
+    const rawArgs = extractArguments(ifInner);
+    if (rawArgs.length > 0) {
+      conditions.push({
+        param: 'kondisi_syarat (logical_test)',
+        actualValue: rawArgs[0] || '',
+        role: 'Syarat yang Diuji pada Tiap Baris',
+        explanation: `Excel mengecek baris demi baris: apakah sel bernilai ${rawArgs[0] || ''}? Baris yang cocok menghasilkan Benar (TRUE), yang tidak cocok menghasilkan Salah (FALSE).`,
+      });
+    }
+    if (rawArgs.length > 1) {
+      conditions.push({
+        param: 'nilai_jika_benar (angka 1)',
+        actualValue: rawArgs[1] || '1',
+        role: 'Dihitung 1 Kali (+1)',
+        explanation: 'Fungsi angka 1: Jika baris tersebut memenuhi syarat, berikan angka 1 agar saat di-SUM baris ini terhitung 1 kali.',
+      });
+    }
+    if (rawArgs.length > 2) {
+      conditions.push({
+        param: 'nilai_jika_salah (angka 0)',
+        actualValue: rawArgs[2] || '0',
+        role: 'Diabaikan / Tidak Dihitung (+0)',
+        explanation: 'Fungsi angka 0: Jika baris tersebut TIDAK memenuhi syarat, berikan angka 0 agar tidak menambah jumlah saat dijumlahkan.',
+      });
+    }
+  }
+
   // --- 1. SUMIFS ---
-  if (formulaUpper.includes('SUMIFS')) {
+  else if (formulaUpper.includes('SUMIFS')) {
     reason =
       'Menggunakan fungsi SUMIFS karena kita perlu menjumlahkan angka berdasarkan satu atau beberapa kriteria spesifik secara bersamaan.';
     pattern = '=SUMIFS( rentang_angka_dijumlahkan ; rentang_kondisi_1 ; kondisi_1 ; [rentang_kondisi_2 ; kondisi_2] ; ... )';
@@ -540,6 +576,17 @@ export function analyzeFormula(rawFormula: string): FormulaBreakdown {
       explanation:
         'Kenapa harus 0 atau FALSE? Parameter ini memerintahkan Excel melakukan pencarian PERSIS SAMA (Exact Match). Jika tidak diisi atau diisi 1 (TRUE), Excel akan menganggap data diurutkan dan mencari nilai aproksimasi terdekat, yang berisiko menarik data barang/harga yang salah!',
       badgeColor: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200',
+    });
+  }
+
+  // Check for '1;0' or '1; 0' (Boolean Counter Pattern in IF or SUM)
+  if (/;\s*1\s*;\s*0\s*\)/.test(formulaUpper) || /;\s*1\s*;\s*0\s*;/.test(formulaUpper)) {
+    argumentsHelp.push({
+      term: 'Angka 1 dan 0 (pada IF)',
+      label: 'Konversi Logika ke Hitungan (Counter Boolean)',
+      explanation:
+        'Fungsi angka 1 dan 0: Fungsi SUM hanya bisa menjumlahkan angka, bukan teks Benar/Salah (TRUE/FALSE). Angka 1 berarti "beri nilai 1 jika syarat terpenuhi (hitung 1 kali)". Angka 0 berarti "beri nilai 0 jika syarat gagal (abaikan / jangan hitung)". Kapan digunakannya? Digunakan saat ingin menghitung jumlah baris/transaksi yang lolos kriteria menggunakan rumus SUM(IF(...;1;0)) atau SUMPRODUCT.',
+      badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200',
     });
   }
 
