@@ -43,6 +43,7 @@ Parameters:
 - Use Indonesian Excel regional notation in every formula example, hint, and answer key: use semicolons (`;`) between function arguments and commas (`,`) for decimal values. Keep English function names. For example: `=IF(A1>0; 1,5; 0)` and `=SUMIFS(C:C; A:A; "Jakarta")`. Do not change commas inside quoted text.
 - Match every formula, hint, and answer key to Formula Reference Style. Classic MUST use cell/range references (for example `C2`, `$D$2:$D$100`) and must not use structured table column names. Modern MUST use structured references with the actual table and header names (for example `TabelData[Qty Masuk]`); when using a row-level reference, {{structuredReferenceAt}} specifies whether to use `[@[Nama Kolom]]` (current row) or `[Nama Kolom]` (whole table column). Choose references appropriate to the operation, and do not invent columns absent from the dataset.
 - `dataTraps` should be an array of strings (e.g. ["Spasi berlebih pada kode barang", "Tanggal tersimpan sebagai teks"]).
+- The `tasks` array MUST contain EXACTLY {{taskCount}} tasks (numbered 1 to {{taskCount}}). The `answerKey` array MUST also contain EXACTLY {{taskCount}} answers corresponding to each task (task: 1 to {{taskCount}}).
 - Each task in `tasks` must have:
   - `no`: number (1, 2, ...)
   - `instruction`: clear administrative assignment

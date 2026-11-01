@@ -11,7 +11,7 @@ interface CaseHeaderProps {
 
 export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
   const [seconds, setSeconds] = useState<number>(0);
-  const [isActive, setIsActive] = useState<boolean>(true);
+  const [isActive, setIsActive] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
   // Timer logic
@@ -32,7 +32,7 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
   // Reset timer if new caseStudy loaded
   useEffect(() => {
     setSeconds(0);
-    setIsActive(true);
+    setIsActive(false);
   }, [caseStudy.seed]);
 
   const formatTime = (totalSeconds: number) => {
@@ -113,7 +113,7 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
         <div className="flex flex-wrap items-center gap-3">
           {/* Timer Widget */}
           <div className="flex items-center space-x-2 bg-gray-100 dark:bg-gray-900 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700">
-            <Clock className="w-4 h-4 text-emerald-600 animate-pulse" />
+            <Clock className={`w-4 h-4 ${isActive ? 'text-emerald-600 animate-pulse' : 'text-gray-400'}`} />
             <span className="font-mono text-lg font-bold text-gray-900 dark:text-white min-w-[60px]">
               {formatTime(seconds)}
             </span>
@@ -121,10 +121,14 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
               <button
                 type="button"
                 onClick={() => setIsActive(!isActive)}
-                className="p-1 text-gray-600 dark:text-gray-300 hover:text-emerald-600 dark:hover:text-emerald-400"
-                title={isActive ? 'Jeda Timer' : 'Lanjutkan Timer'}
+                className={`p-1.5 rounded-lg transition ${
+                  isActive
+                    ? 'text-amber-600 hover:bg-amber-100/60 dark:hover:bg-amber-950/40'
+                    : 'text-emerald-600 hover:bg-emerald-100/60 dark:hover:bg-emerald-950/40 font-semibold'
+                }`}
+                title={isActive ? 'Jeda Timer' : seconds === 0 ? 'Mulai Timer' : 'Lanjutkan Timer'}
               >
-                {isActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                {isActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
               </button>
               <button
                 type="button"
@@ -132,7 +136,7 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
                   setSeconds(0);
                   setIsActive(false);
                 }}
-                className="p-1 text-gray-600 dark:text-gray-300 hover:text-red-500"
+                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
                 title="Reset Timer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />

@@ -103,7 +103,7 @@ export const CaseStudySchema = z.object({
   structuredReferenceAt: z.boolean().optional(),
   industry: IndustryEnum.optional(),
   taskCountMode: TaskCountModeEnum.optional(),
-  taskCount: z.number().min(2).max(10).optional(),
+  taskCount: z.number().min(2).max(25).optional(),
   scenario: z.string().min(10),
   tasks: z.array(TaskSchema).min(1),
   dataTraps: z.array(z.string()).default([]),
@@ -122,8 +122,8 @@ export const GenerateRequestSchema = z.object({
   formulaStyle: FormulaStyleEnum.optional(),
   structuredReferenceAt: z.boolean().optional(),
   industry: IndustryEnum.optional(),
-  taskCountMode: TaskCountModeEnum.default('auto'),
-  taskCount: z.number().min(2).max(10).default(5),
+  taskCountMode: TaskCountModeEnum.default('manual'),
+  taskCount: z.number().min(2).max(25).default(5),
   seed: z.string().optional(),
 });
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;

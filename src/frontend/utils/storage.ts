@@ -64,9 +64,14 @@ export function getSavedSettings(): SavedSettings {
     formulaStyle: 'classic',
     structuredReferenceAt: true,
     industry: 'Acak',
-    taskCountMode: 'auto',
+    taskCountMode: 'manual',
   };
-  return { ...defaults, ...safeGetStorage<Partial<SavedSettings>>(STORAGE_KEYS.SETTINGS, {}) };
+  const saved = safeGetStorage<Partial<SavedSettings>>(STORAGE_KEYS.SETTINGS, {});
+  const merged = { ...defaults, ...saved };
+  if (![5, 8, 10, 15, 20].includes(merged.taskCount)) {
+    merged.taskCount = 5;
+  }
+  return merged;
 }
 
 export function saveLastSettings(settings: SavedSettings): void {

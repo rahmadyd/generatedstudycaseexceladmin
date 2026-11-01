@@ -39,8 +39,10 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   const [formulaStyle, setFormulaStyle] = useState<FormulaStyle>(initialFormulaStyle);
   const [structuredReferenceAt, setStructuredReferenceAt] = useState(initialStructuredReferenceAt);
   const [industry, setIndustry] = useState<Industry>(initialIndustry);
-  const [taskCount, setTaskCount] = useState<number>(initialTaskCount);
-  const [taskCountMode, setTaskCountMode] = useState<TaskCountMode>(initialTaskCountMode);
+  const [taskCount, setTaskCount] = useState<number>(
+    [5, 8, 10, 15, 20].includes(initialTaskCount) ? initialTaskCount : 5
+  );
+  const [taskCountMode, setTaskCountMode] = useState<TaskCountMode>(initialTaskCountMode ?? 'manual');
   const [cooldown, setCooldown] = useState<number>(0);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
@@ -52,8 +54,8 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
     setFormulaStyle(initialFormulaStyle);
     setStructuredReferenceAt(initialStructuredReferenceAt);
     setIndustry(initialIndustry);
-    setTaskCount(initialTaskCount);
-    setTaskCountMode(initialTaskCountMode);
+    setTaskCount([5, 8, 10, 15, 20].includes(initialTaskCount) ? initialTaskCount : 5);
+    setTaskCountMode('manual');
   }, [initialExcelVersion, initialFormulaStyle, initialIndustry, initialLevel, initialRole, initialStructuredReferenceAt, initialTaskCount, initialTaskCountMode]);
 
   const recommendedTaskCount = level
@@ -63,7 +65,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   const effectiveRole = useRecommendedRole ? recommendedRole : role;
   const recommendedRoleOption = ADMIN_ROLES.find((item) => item.id === recommendedRole);
   const selectedRoleOption = ADMIN_ROLES.find((item) => item.id === effectiveRole);
-  const effectiveTaskCount = taskCountMode === 'auto' ? recommendedTaskCount : taskCount;
+  const effectiveTaskCount = [5, 8, 10, 15, 20].includes(taskCount) ? taskCount : 5;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -330,29 +332,25 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
                   Jumlah Tugas
                 </label>
                 <select
-                  value={taskCountMode === 'auto' ? 'auto' : String(taskCount)}
+                  value={taskCount}
                   onChange={(event) => {
-                    if (event.target.value === 'auto') {
-                      setTaskCountMode('auto');
-                    } else {
-                      setTaskCount(Number(event.target.value));
-                      setTaskCountMode('manual');
-                    }
+                    setTaskCount(Number(event.target.value));
+                    setTaskCountMode('manual');
                   }}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium"
                 >
-                  <option value="auto">
-                    Otomatis — {industry === 'Acak' ? '4–6 tugas sesuai industri' : `${recommendedTaskCount} tugas (rekomendasi)`}
-                  </option>
-                  <option value={3}>3 Tugas (Cepat / Mini Case)</option>
-                  <option value={4}>4 Tugas</option>
-                  <option value={5}>5 Tugas (Standar)</option>
-                  <option value={6}>6 Tugas (Mendalam)</option>
+                  <option value={5}>5 (Standar)</option>
+                  <option value={8}>8 (Intensif)</option>
+                  <option value={10}>10 (Latihan Penuh)</option>
+                  <option value={15}>15 (Maraton)</option>
+                  <option value={20}>20 (Simulasi Tes Admin)</option>
                 </select>
                 <p className="mt-1.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
-                  {taskCountMode === 'auto'
-                    ? 'Otomatis menyesuaikan tingkat kesulitan dan kompleksitas industri: umumnya 4 tugas untuk Easy, 5 untuk Middle, dan 6 untuk Advance/Portofolio. Industri dengan banyak proses mendapat tugas tambahan.'
-                    : `Jumlah manual dipilih: ${taskCount} tugas. Pilih Otomatis jika ingin menyesuaikan lagi dengan industri dan level.`}
+                  {taskCount === 5 && 'Standar latihan komprehensif untuk penguasaan rumus harian.'}
+                  {taskCount === 8 && 'Latihan intensif dengan variasi kasus operasional yang lebih beragam.'}
+                  {taskCount === 10 && 'Paket latihan lengkap untuk menguji berbagai skenario olah data.'}
+                  {taskCount === 15 && 'Tantangan maraton untuk menguji ketelitian dan kecepatan analisis data.'}
+                  {taskCount === 20 && 'Simulasi ujian tes masuk admin lengkap skala industri nyata.'}
                 </p>
               </div>
 

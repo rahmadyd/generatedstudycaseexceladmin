@@ -35,6 +35,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
           'You are an expert Indonesian administrative business analyst and Excel educator. You output only valid JSON matching the exact schema requested.',
         userPrompt: `${prompt}${retryGuidance}`,
         temperature: 0.65 + attempt * 0.1,
+        maxTokens: taskCount >= 15 ? 7500 : (taskCount >= 10 ? 5000 : 3800),
       });
 
       let parsed: unknown;
@@ -60,9 +61,21 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
 
       const validation = validateAndSanitizeCaseStudy(parsed, req.excelVersion);
       if (validation.valid && validation.data) {
+        // Jika AI menghasilkan lebih dari taskCount yang diminta, pangkas ke taskCount
+        if (validation.data.tasks.length > taskCount) {
+          validation.data.tasks = validation.data.tasks.slice(0, taskCount);
+          validation.data.answerKey = validation.data.answerKey.slice(0, taskCount);
+        }
+
         const alignmentIssues = getCaseStudyAlignmentIssues(validation.data, req.role, industry);
-        if (validation.data.tasks.length !== taskCount) {
-          alignmentIssues.push(`jumlah tugas harus tepat ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
+        if (taskCount >= 15) {
+          if (validation.data.tasks.length < taskCount - 2) {
+            alignmentIssues.push(`jumlah tugas harus mendekati ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
+          }
+        } else {
+          if (validation.data.tasks.length !== taskCount) {
+            alignmentIssues.push(`jumlah tugas harus tepat ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
+          }
         }
         if (alignmentIssues.length === 0) return validation.data;
         retryGuidance = `\n\nMANDATORY: The previous response did not match the requested criteria: ${alignmentIssues.join('; ')}. Regenerate the entire case and ensure role=${req.role}, industry=${industry}, the narrative/tasks show the selected role, and dataset columns/values are specific to both. Do not return an unrelated generic business case.`;

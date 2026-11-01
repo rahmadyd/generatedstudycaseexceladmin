@@ -94,8 +94,8 @@ export default function App() {
             : 'Acak',
           formulaStyle: urlFormulaStyle === 'modern' ? 'modern' : 'classic',
           structuredReferenceAt: urlStructuredReferenceAt !== 'false',
-          taskCountMode: urlTaskCountMode === 'manual' ? 'manual' : 'auto',
-          taskCount: Number.isInteger(urlTaskCount) && urlTaskCount >= 2 && urlTaskCount <= 10 ? urlTaskCount : 5,
+          taskCountMode: urlTaskCountMode === 'auto' ? 'auto' : 'manual',
+          taskCount: Number.isInteger(urlTaskCount) && [5, 8, 10, 15, 20].includes(urlTaskCount) ? urlTaskCount : 5,
           seed: urlSeed,
         });
         return;
