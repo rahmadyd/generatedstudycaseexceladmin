@@ -6,6 +6,16 @@ import { CaseStudy } from '@/shared/schema';
 import { DataRow } from '../utils/dataset-generator';
 import { exportDatasetToXLSX, exportDatasetToCSV } from '../utils/export-xlsx';
 
+function columnIndexToLetter(index: number): string {
+  let letter = '';
+  let i = index;
+  while (i >= 0) {
+    letter = String.fromCharCode((i % 26) + 65) + letter;
+    i = Math.floor(i / 26) - 1;
+  }
+  return letter;
+}
+
 interface DatasetSectionProps {
   caseStudy: CaseStudy;
   datasetRows: DataRow[];
@@ -93,6 +103,30 @@ export const DatasetSection: React.FC<DatasetSectionProps> = ({ caseStudy, datas
           </div>
         )}
 
+        {/* Column-to-Excel-Letter map — critical for Classic formula reference */}
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-800/70">
+          <p className="text-[11px] font-bold text-blue-800 dark:text-blue-300 mb-2">
+            🗺️ Peta Kolom Excel (gunakan ini untuk menyesuaikan rumus Classic):
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {columns.map((col, idx) => {
+              const letter = columnIndexToLetter(idx);
+              return (
+                <span
+                  key={col.name}
+                  className="px-2 py-0.5 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded text-[11px] font-mono text-blue-900 dark:text-blue-200"
+                >
+                  <span className="font-bold text-blue-600 dark:text-blue-400">{letter}</span>
+                  {' = '}{col.name}
+                </span>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1.5">
+            Data mulai baris 2. Contoh: kolom {columnIndexToLetter(0)} → <code>{columnIndexToLetter(0)}2:{columnIndexToLetter(0)}1000</code> untuk seluruh kolom.
+          </p>
+        </div>
+
         {/* 5-row Dataset Preview Table */}
         <div className="overflow-hidden border border-gray-200 dark:border-gray-700 rounded-xl">
           <div className="bg-gray-50 dark:bg-gray-900/70 px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -109,7 +143,7 @@ export const DatasetSection: React.FC<DatasetSectionProps> = ({ caseStudy, datas
               <thead className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 font-bold border-b border-gray-200 dark:border-gray-700">
                 <tr>
                   <th className="px-3.5 py-2.5 text-center w-12 text-gray-400">#</th>
-                  {columns.map((col) => (
+                  {columns.map((col, idx) => (
                     <th key={col.name} className="px-3.5 py-2.5 whitespace-nowrap">
                       <button
                         type="button"
@@ -117,6 +151,7 @@ export const DatasetSection: React.FC<DatasetSectionProps> = ({ caseStudy, datas
                         className="group flex items-center space-x-1.5 hover:text-emerald-600 transition"
                         title="Klik untuk salin nama kolom"
                       >
+                        <span className="text-[10px] font-bold text-blue-500 mr-0.5">[{columnIndexToLetter(idx)}]</span>
                         <span>{col.name}</span>
                         {copiedCol === col.name ? (
                           <Check className="w-3 h-3 text-emerald-600" />
@@ -137,7 +172,7 @@ export const DatasetSection: React.FC<DatasetSectionProps> = ({ caseStudy, datas
                     key={rIdx}
                     className="hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 transition font-mono"
                   >
-                    <td className="px-3.5 py-2 text-center text-gray-400">{rIdx + 1}</td>
+                    <td className="px-3.5 py-2 text-center text-gray-400">{rIdx + 2}</td>
                     {columns.map((col) => {
                       const val = row[col.name];
                       const isNull = val === null || val === '';
