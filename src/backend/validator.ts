@@ -160,6 +160,10 @@ export function getTaskAnswerAlignmentIssues(
 
   for (const task of tasks) {
     const answers = answerKey.filter((answer) => answer.task === task.no);
+    // A staged case remains usable while its separately generated keys are pending.
+    if (answers.length === 0 && caseStudy.answerKeyStatus === 'pending') {
+      continue;
+    }
     if (answers.length !== 1) {
       issues.push(`tugas ${task.no} harus memiliki tepat satu kunci jawaban yang cocok`);
       continue;

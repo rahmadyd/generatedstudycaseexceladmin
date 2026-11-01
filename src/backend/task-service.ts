@@ -1,8 +1,23 @@
 // Backend services for generating and regenerating case studies
 import { randomUUID } from 'crypto';
-import { CaseStudy, GenerateRequest, RegenerateTaskRequest, Task } from '../shared/schema';
+import {
+  AnswerKeyItemSchema,
+  CaseStudy,
+  GenerateRequest,
+  PortfolioBriefSchema,
+  RegenerateTaskRequest,
+  Task,
+} from '../shared/schema';
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
-import { compileGeneratePrompt, compileRegenerateTaskPrompt, resolveIndustry, resolveTaskCount } from './prompts';
+import {
+  compileAnswerKeyPrompt,
+  compileGeneratePrompt,
+  compilePortfolioBriefPrompt,
+  compilePortfolioRubricPrompt,
+  compileRegenerateTaskPrompt,
+  resolveIndustry,
+  resolveTaskCount,
+} from './prompts';
 import { callGroqChat } from './groq';
 import { GroqApiError } from './ai-client';
 import { GENERATION_CONFIG, GENERATION_REPAIR_ATTEMPTS } from '../shared/generation-config';
@@ -24,12 +39,147 @@ function generateRandomSeed(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
+export class StagedContentGenerationError extends Error {
+  constructor(
+    readonly partialCaseStudy: CaseStudy,
+    readonly stage: string,
+    readonly originalError: unknown,
+  ) {
+    super(`Gagal melengkapi bagian ${stage}.`);
+    this.name = 'StagedContentGenerationError';
+  }
+}
+
+function hasCompleteAnswerKey(caseStudy: CaseStudy): boolean {
+  return caseStudy.tasks.every(
+    (task) => caseStudy.answerKey.filter((answer) => answer.task === task.no).length === 1,
+  ) && getTaskAnswerAlignmentIssues(caseStudy).length === 0;
+}
+
+function parseAIJson(response: string, label: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(cleanJsonString(response));
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error('Respons bukan object JSON.');
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(`${label}: ${(error as Error).message}`);
+  }
+}
+
+async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy> {
+  const rawResponse = await callGroqChat({
+    systemPrompt: 'Generate validated Excel answer keys. Return compact JSON only.',
+    userPrompt: compileAnswerKeyPrompt(caseStudy),
+    temperature: 0.3,
+    maxTokens: GENERATION_CONFIG[caseStudy.level].stagedAnswerKeyMaxTokens,
+    requestId: randomUUID(),
+    callNumber: 1,
+    level: caseStudy.level,
+  });
+  const parsed = parseAIJson(rawResponse, 'Gagal membaca kunci jawaban bertahap');
+  const answerKey = AnswerKeyItemSchema.array().parse(parsed.answerKey).map((answer) => ({
+    ...answer,
+    formula: normalizeExcelFormulaLocale(answer.formula),
+  }));
+  const candidate: CaseStudy = {
+    ...caseStudy,
+    answerKey,
+    answerKeyStatus: 'pending',
+  };
+  const issues = getTaskAnswerAlignmentIssues(candidate);
+  if (issues.length > 0) {
+    throw new Error(`Kunci jawaban bertahap tidak lolos pemeriksaan: ${issues.join('; ')}`);
+  }
+  return { ...candidate, answerKeyStatus: 'available' };
+}
+
+async function generatePortfolioBrief(caseStudy: CaseStudy): Promise<CaseStudy> {
+  const rawResponse = await callGroqChat({
+    systemPrompt: 'Write portfolio client brief and deliverables. Return compact JSON only.',
+    userPrompt: compilePortfolioBriefPrompt(caseStudy),
+    temperature: 0.3,
+    maxTokens: GENERATION_CONFIG.portfolio.stagedPortfolioBriefMaxTokens,
+    requestId: randomUUID(),
+    callNumber: 1,
+    level: caseStudy.level,
+  });
+  const parsed = parseAIJson(rawResponse, 'Gagal membaca brief portofolio');
+  const portfolioBrief = PortfolioBriefSchema.parse(parsed.portfolioBrief);
+  return { ...caseStudy, portfolioBrief };
+}
+
+async function generatePortfolioRubric(caseStudy: CaseStudy): Promise<CaseStudy> {
+  const rawResponse = await callGroqChat({
+    systemPrompt: 'Create a concise portfolio assessment rubric. Return compact JSON only.',
+    userPrompt: compilePortfolioRubricPrompt(caseStudy),
+    temperature: 0.3,
+    maxTokens: GENERATION_CONFIG.portfolio.stagedPortfolioRubricMaxTokens,
+    requestId: randomUUID(),
+    callNumber: 1,
+    level: caseStudy.level,
+  });
+  const parsed = parseAIJson(rawResponse, 'Gagal membaca rubrik portofolio');
+  if (!Array.isArray(parsed.rubric) ||
+      !parsed.rubric.every((item): item is string => typeof item === 'string' && Boolean(item.trim()))) {
+    throw new Error('Rubrik portofolio tidak valid.');
+  }
+  return { ...caseStudy, rubric: parsed.rubric };
+}
+
+async function completeStagedContent(initialCase: CaseStudy): Promise<CaseStudy> {
+  let caseStudy = { ...initialCase };
+  const stages: Array<{ name: string; run: (current: CaseStudy) => Promise<CaseStudy> }> = [
+    { name: 'answer_key', run: generateStagedAnswerKey },
+  ];
+  if (caseStudy.level === 'portfolio') {
+    stages.push(
+      { name: 'portfolio_brief', run: generatePortfolioBrief },
+      { name: 'portfolio_rubric', run: generatePortfolioRubric },
+    );
+  }
+
+  for (const stage of stages) {
+    const isComplete = stage.name === 'answer_key'
+      ? hasCompleteAnswerKey(caseStudy)
+      : stage.name === 'portfolio_brief'
+        ? Boolean(caseStudy.portfolioBrief)
+        : Boolean(caseStudy.rubric?.length);
+    if (isComplete) continue;
+
+    try {
+      caseStudy = await stage.run(caseStudy);
+    } catch (error) {
+      console.error('Staged content generation failed:', JSON.stringify({
+        stage: stage.name,
+        seed: caseStudy.seed,
+        message: (error as Error).message,
+      }));
+      throw new StagedContentGenerationError(caseStudy, stage.name, error);
+    }
+  }
+
+  caseStudy.answerKeyStatus = hasCompleteAnswerKey(caseStudy) ? 'available' : 'pending';
+  if (caseStudy.level === 'portfolio') {
+    caseStudy.portfolioStatus = caseStudy.portfolioBrief && caseStudy.rubric?.length
+      ? 'available'
+      : 'pending';
+  }
+  return caseStudy;
+}
+
 /** Generate a new case study */
 export async function generateCaseStudyService(req: GenerateRequest): Promise<CaseStudy> {
   const seed = req.seed && req.seed.trim() !== '' ? req.seed.trim() : generateRandomSeed();
   const industry = resolveIndustry(req.industry, seed);
   const taskCount = resolveTaskCount(req, industry);
-  const prompt = compileGeneratePrompt({ ...req, industry }, seed);
+  const isStaged = req.level === 'advance' || req.level === 'portfolio';
+  const prompt = compileGeneratePrompt(
+    { ...req, industry },
+    seed,
+    isStaged ? { omitAnswerKey: true, omitPortfolio: true } : {},
+  );
   const requestId = randomUUID();
   let lastError: unknown;
   let retryGuidance = '';
@@ -41,7 +191,9 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         systemPrompt: 'Create a practical Excel case in Indonesian. Return compact JSON only in the requested schema.',
         userPrompt: `${prompt}${retryGuidance}`,
         temperature: 0.65 + attempt * 0.1,
-        maxTokens: GENERATION_CONFIG[req.level].maxTokens,
+        maxTokens: isStaged
+          ? GENERATION_CONFIG[req.level].stagedCaseMaxTokens
+          : GENERATION_CONFIG[req.level].maxTokens,
         requestId,
         callNumber: attempt + 1,
         level: req.level,
@@ -71,6 +223,14 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
 
       const validation = validateAndSanitizeCaseStudy(parsed, req.excelVersion);
       if (validation.valid && validation.data) {
+        if (isStaged) {
+          validation.data.answerKey = [];
+          validation.data.answerKeyStatus = 'pending';
+          validation.data.portfolioBrief = undefined;
+          validation.data.rubric = undefined;
+          if (req.level === 'portfolio') validation.data.portfolioStatus = 'pending';
+        }
+
         // Jika AI menghasilkan lebih dari taskCount yang diminta, pangkas ke taskCount
         if (validation.data.tasks.length > taskCount) {
           validation.data.tasks = validation.data.tasks.slice(0, taskCount);
@@ -79,7 +239,6 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
             retainedTaskNumbers.has(answer.task),
           );
         }
-
         const alignmentIssues = getCaseStudyAlignmentIssues(validation.data, req.role, industry);
         alignmentIssues.push(...getTaskAnswerAlignmentIssues(validation.data));
         if (taskCount >= 15) {
@@ -91,7 +250,9 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
             alignmentIssues.push(`jumlah tugas harus tepat ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
           }
         }
-        if (alignmentIssues.length === 0) return validation.data;
+        if (alignmentIssues.length === 0) {
+          return validation.data;
+        }
         retryGuidance = `\n\nMANDATORY: The previous response did not match the requested criteria: ${alignmentIssues.join('; ')}. Regenerate the entire case and ensure role=${req.role}, industry=${industry}, the narrative/tasks show the selected role, and dataset columns/values are specific to both. Do not return an unrelated generic business case.`;
         throw new Error(`Hasil AI tidak selaras dengan pilihan bidang admin/industri: ${alignmentIssues.join('; ')}`);
       }
@@ -116,6 +277,10 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
   throw new Error(
     `Gagal generate studi kasus: ${(lastError as Error)?.message || 'Format respons tidak sesuai'}`
   );
+}
+
+export async function generateMissingCaseContentService(caseStudy: CaseStudy): Promise<CaseStudy> {
+  return completeStagedContent(caseStudy);
 }
 
 /** Regenerate a single task within an existing case study */
@@ -173,7 +338,12 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     ...caseStudy.answerKey.filter((answer) => answer.task !== taskNo),
     replacementAnswer,
   ];
-  const regeneratedCase = { ...caseStudy, tasks: finalTasks, answerKey: finalAnswerKey };
+  const regeneratedCase = {
+    ...caseStudy,
+    tasks: finalTasks,
+    answerKey: finalAnswerKey,
+  };
+  if (hasCompleteAnswerKey(regeneratedCase)) regeneratedCase.answerKeyStatus = 'available';
   const alignmentIssues = getTaskAnswerAlignmentIssues(regeneratedCase, [taskNo]);
   if (alignmentIssues.length > 0) {
     throw new Error(`Tugas baru tidak selaras dengan kunci jawaban: ${alignmentIssues.join('; ')}`);

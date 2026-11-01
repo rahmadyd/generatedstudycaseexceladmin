@@ -91,6 +91,9 @@ export const PortfolioBriefSchema = z.object({
 });
 export type PortfolioBrief = z.infer<typeof PortfolioBriefSchema>;
 
+export const AnswerKeyStatusEnum = z.enum(['pending', 'available']);
+export const PortfolioStatusEnum = z.enum(['pending', 'available']);
+
 export const CaseStudySchema = z.object({
   id: z.string().optional(),
   seed: z.string(),
@@ -110,6 +113,8 @@ export const CaseStudySchema = z.object({
   formulas: FormulasSchema,
   dataset: DatasetSchema,
   answerKey: z.array(AnswerKeyItemSchema).default([]),
+  answerKeyStatus: AnswerKeyStatusEnum.optional(),
+  portfolioStatus: PortfolioStatusEnum.optional(),
   rubric: z.array(z.string()).optional(),
   portfolioBrief: PortfolioBriefSchema.optional(),
 });
@@ -133,3 +138,7 @@ export const RegenerateTaskRequestSchema = z.object({
   taskNo: z.number(),
 });
 export type RegenerateTaskRequest = z.infer<typeof RegenerateTaskRequestSchema>;
+
+export const GenerateMissingCaseContentRequestSchema = z.object({
+  caseStudy: CaseStudySchema,
+});

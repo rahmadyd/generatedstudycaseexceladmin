@@ -227,8 +227,10 @@ export function exportKunciJawabanPDF(caseStudy: CaseStudy) {
 
   const answerRows = caseStudy.tasks.map((task) => {
     const keyItem = caseStudy.answerKey.find((a) => a.task === task.no);
-    const formula = keyItem ? normalizeExcelFormulaLocale(keyItem.formula) : '-';
-    const explanation = keyItem ? keyItem.explanation : '-';
+    const formula = keyItem
+      ? normalizeExcelFormulaLocale(keyItem.formula)
+      : 'Kunci jawaban belum tersedia';
+    const explanation = keyItem ? keyItem.explanation : 'Coba lengkapi kunci dari aplikasi.';
     return [
       `Tugas #${task.no}`,
       task.instruction,

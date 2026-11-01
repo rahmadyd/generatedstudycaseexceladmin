@@ -15,6 +15,8 @@ Dataset dibuat oleh aplikasi berdasarkan skema kasus dan seed, bukan dihasilkan 
 - **Advance** — rumus multi-kriteria, analisis data, Pivot Table, dan pemformatan bersyarat.
 - **Portfolio** — tantangan lebih menyeluruh yang dapat mencakup brief klien, deliverable, rubrik, dan dashboard.
 
+Untuk Advance dan Portfolio, skenario/tugas dibuat terpisah dari kunci jawaban. Portfolio juga membuat brief dan rubrik pada tahap terpisah agar respons lebih ringkas.
+
 Rumus yang disarankan dan dilarang disesuaikan dengan level. Pengguna juga dapat memilih target kompatibilitas Microsoft 365 atau Excel 2016/2019.
 
 ### Pekerjaan dan industri
@@ -26,6 +28,8 @@ Latihan dapat disesuaikan untuk pekerjaan seperti admin penjualan, gudang/invent
 Setiap tugas berisi instruksi, petunjuk, dan target hasil. Kunci jawaban dapat dibuka per tugas atau sekaligus. Progress tugas tersimpan di browser. Jika satu tugas tidak sesuai, pengguna dapat meminta aplikasi membuat ulang tugas itu tanpa mengganti seluruh kasus.
 
 Sebelum kasus AI digunakan, aplikasi memeriksa struktur dan keselarasan tugas dengan kunci, termasuk beberapa kriteria, kolom yang disebut, fungsi yang dilarang, dan referensi sheet yang tidak tersedia. Pemeriksaan otomatis membantu mengurangi ketidaksesuaian, tetapi hasil tetap sebaiknya diperiksa sebelum dipakai sebagai materi penilaian.
+
+Jika tahap kunci jawaban atau materi Portfolio gagal, skenario, dataset, dan tugas yang sudah berhasil dibuat tetap ditampilkan dan disimpan di riwayat. Bagian yang belum tersedia ditandai pada halaman tugas; gunakan tombol **Coba lengkapi sekarang** untuk mengulang bagian tersebut saja.
 
 ### Dataset dan unduhan
 
@@ -60,9 +64,10 @@ Kasus yang berhasil dibuat tersimpan di riwayat browser. Pengguna dapat membuka 
 - Model dengan nama `gpt-oss` dikirim dengan `reasoning_effort: low`.
 - Jumlah tugas dibatasi per level untuk mengurangi ukuran respons: Easy 3–4, Middle 4–5, Advance 4–5. Portfolio masih memakai batas yang lebih besar.
 - OpenAI tidak digunakan sebagai provider atau fallback.
-- Jika Groq mengembalikan error 429, permintaan tidak diulang otomatis oleh layanan generate. Artinya, pengguna perlu mengikuti alasan atau waktu reset yang diberikan Groq dan memeriksa penggunaan/limit di akun Groq.
-- Jika model utama mendapat 429 dan `GROQ_FALLBACK_MODEL` berbeda, aplikasi mencoba model cadangan satu kali. Saat 429 terakhir terjadi, API mengirim countdown dan tombol generate/regenerate dinonaktifkan sementara.
+- Jika model utama mengembalikan 429 dan `GROQ_FALLBACK_MODEL` berbeda, aplikasi mencoba model cadangan satu kali. Jika keduanya tetap 429, aplikasi tidak mengulang otomatis tanpa batas.
+- Untuk Easy/Middle, kegagalan 429 ditampilkan dengan countdown. Untuk Advance/Portfolio, bila kasus utama sudah terbentuk tetapi tahap lanjutan gagal, kasus tetap tersedia dan bagian kunci/brief/rubrik dapat dicoba ulang.
 - Respons yang gagal validasi hanya diperbaiki maksimal satu kali. Tombol juga memiliki guard klik ganda dan server membatasi permintaan beruntun per IP pada instance yang sama.
+- Kunci PDF tetap dapat diunduh meski sebagian kunci belum tersedia; baris terkait diberi penanda **Kunci jawaban belum tersedia**.
 - Endpoint `/api/health` hanya melaporkan apakah `GROQ_API_KEY` tersedia di deployment; endpoint tersebut tidak menguji validitas key, kuota, atau akses ke model.
 
 ### Menyiapkan Groq di Vercel

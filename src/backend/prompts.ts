@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { GenerateRequest, Industry, Level } from '../shared/schema';
+import { CaseStudy, GenerateRequest, Industry, Level } from '../shared/schema';
 import { ADMIN_ROLES, getRecommendedTaskCount, INDUSTRY_PROFILES, LEVEL_CONFIG, M365_ONLY_FORMULAS, ROLE_PROFILES, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
 import { GENERATION_CONFIG } from '../shared/generation-config';
 
@@ -10,9 +10,9 @@ Context: {{companyName}}; {{theme}}; {{period}}. Industry guidance: {{industryPr
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
 Task count: exactly {{taskCount}} | Seed: {{seed}} | Formula policy: {{levelFormulaPolicy}}
 Keep hints within {{hintMaxChars}} characters and explanations within {{explanationMaxChars}} characters.
-Rules: Indonesian; role/industry-specific; dataset schema is the only source sheet; match every instruction, hint, target, formula, and condition; use only allowed formulas and available columns; conditional aggregates must implement every criterion; formula tasks need one copyable formula; no fixed results for random data; exactly {{taskCount}} tasks and matching keys. Easy/Middle/Advance omit portfolio fields. Portfolio includes rubric and portfolioBrief.
+Rules: Indonesian; role/industry-specific; dataset schema is the only source sheet; match every instruction, hint, target, formula, and condition; use only allowed formulas and available columns; conditional aggregates must implement every criterion; formula tasks need one copyable formula; no fixed results for random data; exactly {{taskCount}} tasks. {{answerKeyRule}} {{portfolioRule}}
 Use Indonesian Excel separators (semicolons; English function names). Return compact JSON, no markdown or unused fields, with this shape:
-{"title":"string","scenario":"string","tasks":[{"no":1,"instruction":"string","hint":"string","targetResult":"string"}],"dataTraps":["string"],"formulas":{"recommended":["string"],"allowed":["string"],"forbidden":["string"]},"dataset":{"sheetName":"string","rows":150,"columns":[{"name":"string","type":"date|text|number|int|currency|enum","values":["..."],"range":[1,100]}]},"answerKey":[{"task":1,"formula":"=FORMULA(...)","explanation":"string"}],"rubric":["string"],"portfolioBrief":{"clientBrief":"string","deliverables":["string"],"readmeTemplate":"string"}}`;
+{"title":"string","scenario":"string","tasks":[{"no":1,"instruction":"string","hint":"string","targetResult":"string"}],"dataTraps":["string"],"formulas":{"recommended":["string"],"allowed":["string"],"forbidden":["string"]},"dataset":{"sheetName":"string","rows":150,"columns":[{"name":"string","type":"date|text|number|int|currency|enum","values":["..."],"range":[1,100]}]},{{answerKeyShape}}{{portfolioShape}}}`;
 const COMPACT_DEFAULT_REGENERATE_TASK_PROMPT = `Regenerate only task {{taskNo}} and its matching answer for this Indonesian Excel case.
 Case: {{title}} | Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}} | Scenario: {{scenario}}
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
@@ -210,7 +210,11 @@ export function loadPromptTemplate(templateName: string): string {
   return COMPACT_DEFAULT_GENERATE_PROMPT;
 }
 
-export function compileGeneratePrompt(req: GenerateRequest, seed: string): string {
+export function compileGeneratePrompt(
+  req: GenerateRequest,
+  seed: string,
+  options: { omitAnswerKey?: boolean; omitPortfolio?: boolean } = {},
+): string {
   const template = loadPromptTemplate('generate-case.md');
 
   const industry: Exclude<Industry, 'Acak'> = req.industry && req.industry !== 'Acak'
@@ -225,6 +229,8 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
   const industryProfile = INDUSTRY_PROFILES[industry];
   const formulaPolicy = LEVEL_CONFIG[req.level];
   const versionForbiddenFormulas = req.excelVersion === '2016/2019' ? M365_ONLY_FORMULAS : [];
+  const omitAnswerKey = options.omitAnswerKey ?? false;
+  const omitPortfolio = options.omitPortfolio ?? false;
 
   const replacements: Record<string, string> = {
     '{{level}}': req.level,
@@ -249,6 +255,18 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
     '{{hintMaxChars}}': String(GENERATION_CONFIG[req.level].hintMaxChars),
     '{{explanationMaxChars}}': String(GENERATION_CONFIG[req.level].explanationMaxChars),
     '{{seed}}': seed,
+    '{{answerKeyRule}}': omitAnswerKey
+      ? 'Return an empty answerKey array; answer keys are generated separately.'
+      : 'Return exactly one matching answer key for every task.',
+    '{{portfolioRule}}': omitPortfolio
+      ? 'Omit rubric and portfolioBrief; these are generated separately.'
+      : 'Easy/Middle/Advance omit portfolio fields. Portfolio must include rubric and portfolioBrief.',
+    '{{answerKeyShape}}': `${omitAnswerKey
+      ? '"answerKey": []'
+      : '"answerKey": [{ "task": 1, "formula": "=FORMULA(...)", "explanation": "string" }]'}${omitPortfolio ? '' : ','}`,
+    '{{portfolioShape}}': omitPortfolio
+      ? ''
+      : '"rubric": ["string"], "portfolioBrief": { "clientBrief": "string", "deliverables": ["string"], "readmeTemplate": "string" }',
   };
 
   let compiled = template;
@@ -257,6 +275,40 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
   }
 
   return compiled;
+}
+
+export function compileAnswerKeyPrompt(caseStudy: CaseStudy): string {
+  const taskContext = caseStudy.tasks.map(({ no, instruction, hint, targetResult }) => ({
+    no,
+    instruction,
+    hint,
+    targetResult,
+  }));
+  const columnNames = caseStudy.dataset.columns.map((column) => column.name);
+  return `Generate answer keys only for this validated Indonesian Excel case. Return compact JSON only.
+Level: ${caseStudy.level}; Excel: ${caseStudy.excelVersion}; reference style: ${caseStudy.formulaStyle ?? 'classic'}; structured-reference @: ${caseStudy.structuredReferenceAt !== false}.
+Scenario: ${caseStudy.scenario}
+Tasks: ${JSON.stringify(taskContext)}
+Available source sheet: ${caseStudy.dataset.sheetName}; columns: ${JSON.stringify(columnNames)}
+Recommended formulas: ${JSON.stringify(caseStudy.formulas.recommended)}; forbidden formulas: ${JSON.stringify(caseStudy.formulas.forbidden)}.
+Return exactly one answer per task in task order. Each answer must satisfy every condition in its instruction, use only available columns and allowed formulas, and match the requested target. Do not invent extra sheets, lookup tables, or fixed dataset results. Use one copyable formula for formula tasks and concise procedural steps for non-formula tasks. Use English function names and semicolons between arguments. Keep each explanation within ${GENERATION_CONFIG[caseStudy.level].explanationMaxChars} characters.
+{"answerKey":[{"task":1,"formula":"=...","explanation":"..."}]}`;
+}
+
+export function compilePortfolioBriefPrompt(caseStudy: CaseStudy): string {
+  return `Write only the client brief and deliverables for this Indonesian Excel portfolio case. Return compact JSON only.
+Role: ${caseStudy.role}; industry: ${caseStudy.industry ?? '-'}; scenario: ${caseStudy.scenario}
+Tasks: ${JSON.stringify(caseStudy.tasks.map(({ no, instruction, targetResult }) => ({ no, instruction, targetResult })))}
+The brief and deliverables must match the existing scenario and tasks; do not add new data sheets or tasks.
+{"portfolioBrief":{"clientBrief":"...","deliverables":["..."],"readmeTemplate":"..."}}`;
+}
+
+export function compilePortfolioRubricPrompt(caseStudy: CaseStudy): string {
+  return `Create a concise assessment rubric for this Indonesian Excel portfolio case. Return compact JSON only.
+Role: ${caseStudy.role}; industry: ${caseStudy.industry ?? '-'}; scenario: ${caseStudy.scenario}
+Tasks: ${JSON.stringify(caseStudy.tasks.map(({ no, instruction, targetResult }) => ({ no, instruction, targetResult })))}
+The rubric must assess the supplied work only and must not introduce new tasks.
+{"rubric":["..."]}`;
 }
 
 export function resolveIndustry(industry: GenerateRequest['industry'], seed: string): Exclude<Industry, 'Acak'> {

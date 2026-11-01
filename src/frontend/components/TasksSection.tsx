@@ -31,6 +31,10 @@ interface TasksSectionProps {
   onRegenerateTask: (taskNo: number) => Promise<void>;
   regeneratingTaskNo: number | null;
   regenerateRetryAfterSeconds: number;
+  onRetryMissingContent: () => Promise<void>;
+  isCompletingMissingContent: boolean;
+  missingContentRetryAfterSeconds: number;
+  missingContentError: string | null;
 }
 
 export const TasksSection: React.FC<TasksSectionProps> = ({
@@ -40,6 +44,10 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
   onRegenerateTask,
   regeneratingTaskNo,
   regenerateRetryAfterSeconds,
+  onRetryMissingContent,
+  isCompletingMissingContent,
+  missingContentRetryAfterSeconds,
+  missingContentError,
 }) => {
   const [copiedTask, setCopiedTask] = useState<number | null>(null);
   const [copiedFormulaTask, setCopiedFormulaTask] = useState<number | null>(null);
@@ -48,6 +56,13 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
   const total = caseStudy.tasks.length;
   const completedCount = completedTasks.length;
   const progressPercent = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+  const availableKeyTaskNumbers = caseStudy.tasks
+    .filter((task) => caseStudy.answerKey.some((answer) => answer.task === task.no))
+    .map((task) => task.no);
+  const allAvailableKeysRevealed = availableKeyTaskNumbers.length > 0 &&
+    availableKeyTaskNumbers.every((taskNo) => revealedKeys.includes(taskNo));
+  const hasMissingContent = caseStudy.answerKeyStatus === 'pending' ||
+    (caseStudy.level === 'portfolio' && caseStudy.portfolioStatus === 'pending');
 
   const handleCheck = (taskNo: number) => {
     onToggleTask(taskNo);
@@ -84,10 +99,10 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
   };
 
   const toggleAllKeys = () => {
-    if (revealedKeys.length === total) {
+    if (allAvailableKeysRevealed) {
       setRevealedKeys([]);
     } else {
-      setRevealedKeys(caseStudy.tasks.map((t) => t.no));
+      setRevealedKeys(availableKeyTaskNumbers);
     }
   };
 
@@ -115,10 +130,11 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
             <button
               type="button"
               onClick={toggleAllKeys}
-              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition"
+              disabled={availableKeyTaskNumbers.length === 0}
+              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition disabled:opacity-50 disabled:cursor-not-allowed"
               title="Buka atau sembunyikan semua kunci jawaban sekaligus"
             >
-              {revealedKeys.length === total ? (
+              {allAvailableKeysRevealed ? (
                 <>
                   <EyeOff className="w-3.5 h-3.5" />
                   <span>Tutup Semua Kunci</span>
@@ -168,6 +184,43 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
 
         {/* Task Cards List */}
         <div className="space-y-5">
+          {hasMissingContent && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-start gap-2">
+                  <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs leading-relaxed">
+                    <p className="font-bold">Sebagian materi belum tersedia.</p>
+                    <p>
+                      {caseStudy.answerKeyStatus === 'pending'
+                        ? 'Kunci jawaban belum tersedia.'
+                        : 'Kunci jawaban sudah tersedia.'}
+                      {caseStudy.level === 'portfolio' && caseStudy.portfolioStatus === 'pending'
+                        ? ' Brief atau rubrik portofolio juga belum lengkap.'
+                        : ''}
+                      {' '}Kasus dan tugas tetap dapat digunakan.
+                    </p>
+                    {missingContentError && <p className="mt-1 font-semibold">{missingContentError}</p>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void onRetryMissingContent()}
+                  disabled={isCompletingMissingContent || missingContentRetryAfterSeconds > 0}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-600 dark:hover:bg-amber-500"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCompletingMissingContent ? 'animate-spin' : ''}`} />
+                  <span>
+                    {isCompletingMissingContent
+                      ? 'Melengkapi...'
+                      : missingContentRetryAfterSeconds > 0
+                        ? `Coba lagi dalam ${missingContentRetryAfterSeconds} detik`
+                        : 'Coba lengkapi sekarang'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
           {regenerateRetryAfterSeconds > 0 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
               Batas penggunaan AI tercapai. Coba ganti tugas lagi dalam {regenerateRetryAfterSeconds} detik.

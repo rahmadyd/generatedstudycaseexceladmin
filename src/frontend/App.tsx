@@ -37,6 +37,9 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [regeneratingTaskNo, setRegeneratingTaskNo] = useState<number | null>(null);
   const [regenerateRetryAfterSeconds, setRegenerateRetryAfterSeconds] = useState(0);
+  const [isCompletingMissingContent, setIsCompletingMissingContent] = useState(false);
+  const [missingContentRetryAfterSeconds, setMissingContentRetryAfterSeconds] = useState(0);
+  const [missingContentError, setMissingContentError] = useState<string | null>(null);
 
   // Modals
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
@@ -44,6 +47,7 @@ export default function App() {
   const [generatorSettings, setGeneratorSettings] = useState<SavedSettings>(() => getSavedSettings());
   const generateInFlightRef = useRef(false);
   const regenerateInFlightRef = useRef(false);
+  const missingContentInFlightRef = useRef(false);
 
   // Theme
   const [darkMode, setDarkMode] = useState<boolean>(false);
@@ -106,6 +110,15 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [regenerateRetryAfterSeconds]);
 
+  useEffect(() => {
+    if (missingContentRetryAfterSeconds <= 0) return;
+    const timer = setTimeout(
+      () => setMissingContentRetryAfterSeconds((remaining) => remaining - 1),
+      1000,
+    );
+    return () => clearTimeout(timer);
+  }, [missingContentRetryAfterSeconds]);
+
   const toggleDarkMode = () => {
     const next = !darkMode;
     setDarkMode(next);
@@ -164,6 +177,13 @@ export default function App() {
 
       const newCase: CaseStudy = data.caseStudy;
       setCaseStudy(newCase);
+      setMissingContentRetryAfterSeconds(0);
+      setMissingContentError(
+        newCase.answerKeyStatus === 'pending' ||
+          (newCase.level === 'portfolio' && newCase.portfolioStatus === 'pending')
+          ? 'Kasus berhasil dibuat, tetapi sebagian materi belum berhasil dilengkapi.'
+          : null,
+      );
       setCompletedTasks([]);
       saveTaskProgress(newCase.seed, []);
       saveCaseToHistory(newCase);
@@ -185,6 +205,12 @@ export default function App() {
         if (newCase.taskCount !== undefined) url.searchParams.set('taskCount', String(newCase.taskCount));
         window.history.replaceState({}, '', url.toString());
       }
+      if (
+        newCase.answerKeyStatus === 'pending' ||
+        (newCase.level === 'portfolio' && newCase.portfolioStatus === 'pending')
+      ) {
+        await handleRetryMissingContent(newCase);
+      }
       return;
     } catch (err) {
       console.error('Error generating case:', err);
@@ -192,6 +218,52 @@ export default function App() {
     } finally {
       setIsLoading(false);
       generateInFlightRef.current = false;
+    }
+  };
+
+  const handleRetryMissingContent = async (caseToComplete: CaseStudy = caseStudy) => {
+    if (missingContentInFlightRef.current || missingContentRetryAfterSeconds > 0) return;
+    missingContentInFlightRef.current = true;
+    setIsCompletingMissingContent(true);
+    setMissingContentError(null);
+    try {
+      const res = await fetch('/api/generate-missing-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caseStudy: caseToComplete }),
+      });
+      const data = await res.json();
+      const updatedCase: CaseStudy | undefined = data.caseStudy;
+      if (updatedCase) {
+        setCaseStudy(updatedCase);
+        saveCaseToHistory(updatedCase);
+        setHistoryList(getSavedCasesHistory());
+      }
+      if (!res.ok) {
+        if (data.code === 'RATE_LIMITED') {
+          const retryAfterSeconds =
+            Number(data.retryAfterSeconds) || GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS;
+          setMissingContentRetryAfterSeconds(Math.max(1, retryAfterSeconds));
+          setMissingContentError(data.error || 'Batas penggunaan AI tercapai.');
+          return;
+        }
+        throw new Error(data.error || 'Gagal melengkapi kunci dan bagian portofolio.');
+      }
+
+      if (!updatedCase) throw new Error('Respons server tidak menyertakan studi kasus.');
+      setMissingContentRetryAfterSeconds(0);
+      setMissingContentError(
+        updatedCase.answerKeyStatus === 'pending' ||
+          (updatedCase.level === 'portfolio' && updatedCase.portfolioStatus === 'pending')
+          ? 'Sebagian materi masih belum tersedia. Silakan coba lagi.'
+          : null,
+      );
+    } catch (err) {
+      console.error('Error completing staged case content:', err);
+      setMissingContentError((err as Error).message || 'Gagal melengkapi materi.');
+    } finally {
+      setIsCompletingMissingContent(false);
+      missingContentInFlightRef.current = false;
     }
   };
 
@@ -251,6 +323,8 @@ export default function App() {
       return;
     }
     setCaseStudy(selected);
+    setMissingContentError(null);
+    setMissingContentRetryAfterSeconds(0);
     const progress = getTaskProgress(selected.seed);
     setCompletedTasks(progress);
     if (typeof window !== 'undefined') {
@@ -324,6 +398,10 @@ export default function App() {
           onRegenerateTask={handleRegenerateTask}
           regeneratingTaskNo={regeneratingTaskNo}
           regenerateRetryAfterSeconds={regenerateRetryAfterSeconds}
+          onRetryMissingContent={handleRetryMissingContent}
+          isCompletingMissingContent={isCompletingMissingContent}
+          missingContentRetryAfterSeconds={missingContentRetryAfterSeconds}
+          missingContentError={missingContentError}
         />
 
         {/* 6. Clue rumus */}

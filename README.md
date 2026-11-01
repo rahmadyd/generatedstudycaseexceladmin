@@ -56,6 +56,7 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
    - API key tidak dikirim dari browser atau disimpan di `localStorage`; OpenAI tidak digunakan sebagai fallback.
    - Model default `openai/gpt-oss-120b`; model utama dan cadangan dapat diatur melalui `GROQ_MODEL` dan `GROQ_FALLBACK_MODEL`.
    - Jumlah tugas dibatasi sesuai level agar respons lebih ringkas: Easy 3–4, Middle 4–5, Advance 4–5.
+   - Generate Advance dan Portfolio dipisah menjadi beberapa tahap. Jika tahap kunci/brief/rubrik gagal, kasus yang sudah berhasil dibuat tetap dapat digunakan dan bagian yang belum lengkap bisa dicoba ulang.
 
 ---
 
@@ -104,6 +105,7 @@ generatedstudycaseexceladmin/
 │   └── app/                         # NEXT.JS APP ROUTER (Integrasi Vercel)
 │       ├── api/                     # Serverless Function Endpoints
 │       │   ├── generate/route.ts    # POST /api/generate
+│       │   ├── generate-missing-content/route.ts # Retry kunci/brief/rubrik
 │       │   └── regenerate-task/route.ts # POST /api/regenerate-task
 │       ├── layout.tsx               # Root HTML & styling metadata
 │       ├── page.tsx                 # Entry page merender src/frontend/App.tsx

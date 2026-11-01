@@ -3,6 +3,10 @@ import type { Level } from './schema';
 export interface GenerationLevelConfig {
   maxTokens: number;
   regenerateMaxTokens: number;
+  stagedCaseMaxTokens?: number;
+  stagedAnswerKeyMaxTokens?: number;
+  stagedPortfolioBriefMaxTokens?: number;
+  stagedPortfolioRubricMaxTokens?: number;
   minTasks: number;
   maxTasks: number;
   defaultTasks: number;
@@ -35,6 +39,8 @@ export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
   advance: {
     maxTokens: 2500,
     regenerateMaxTokens: 1200,
+    stagedCaseMaxTokens: 1800,
+    stagedAnswerKeyMaxTokens: 700,
     minTasks: 4,
     maxTasks: 5,
     defaultTasks: 5,
@@ -45,6 +51,10 @@ export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
   portfolio: {
     maxTokens: 7500,
     regenerateMaxTokens: 1800,
+    stagedCaseMaxTokens: 4000,
+    stagedAnswerKeyMaxTokens: 1700,
+    stagedPortfolioBriefMaxTokens: 900,
+    stagedPortfolioRubricMaxTokens: 900,
     minTasks: 5,
     maxTasks: 20,
     defaultTasks: 6,
@@ -61,6 +71,7 @@ export function getTaskCountOptions(level: Level): number[] {
 export const GENERATION_REPAIR_ATTEMPTS = 1;
 export const GENERATION_RATE_LIMIT_REQUESTS = 15;
 export const REGENERATE_RATE_LIMIT_REQUESTS = 20;
+export const ANSWER_KEY_RATE_LIMIT_REQUESTS = 20;
 export const GENERATION_RATE_LIMIT_WINDOW_MS = 60_000;
 export const GENERATION_MIN_INTERVAL_MS = 5_000;
 export const GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS = 30;

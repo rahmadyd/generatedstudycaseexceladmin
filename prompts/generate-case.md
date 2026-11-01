@@ -15,8 +15,9 @@ RULES
 - Follow the formula policy and Excel version. Use the requested reference style. Use semicolons between formula arguments and English function names.
 - For conditional aggregates, implement all conditions in the formula; filtering worksheet rows is not a formula condition.
 - Formula tasks need one copyable formula. Procedural tasks need concise steps. Never claim fixed calculated values for randomly generated rows.
-- Return exactly {{taskCount}} numbered tasks and matching answer keys. Keep JSON compact; no markdown or unused fields.
-- Easy/Middle/Advance should omit portfolio fields. Portfolio must include rubric and portfolioBrief (clientBrief, deliverables, readmeTemplate).
+- Return exactly {{taskCount}} numbered tasks. {{answerKeyRule}}
+- {{portfolioRule}}
+- Keep JSON compact; no markdown or unused fields.
 
 OUTPUT SHAPE
 {
@@ -38,13 +39,6 @@ OUTPUT SHAPE
       { "name": "string", "type": "date|text|number|int|currency|enum", "values": ["..."], "range": [1, 100] }
     ]
   },
-  "answerKey": [
-    { "task": 1, "formula": "=FORMULA(...)", "explanation": "string" }
-  ],
-  "rubric": ["string"],
-  "portfolioBrief": {
-    "clientBrief": "string",
-    "deliverables": ["string"],
-    "readmeTemplate": "string"
-  }
+  {{answerKeyShape}}
+  {{portfolioShape}}
 }
