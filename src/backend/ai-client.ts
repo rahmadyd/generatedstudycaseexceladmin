@@ -5,6 +5,57 @@ export interface AICompletionOptions {
   maxTokens?: number;
   model?: string;
   jsonMode?: boolean;
+  requestId?: string;
+  callNumber?: number;
+  level?: string;
+  providerCallNumber?: number;
+}
+
+async function logGroqResponse(
+  response: Response,
+  options: AICompletionOptions,
+  model: string,
+  providerCallNumber: number,
+): Promise<void> {
+  const baseLog = {
+    event: 'groq_completion',
+    requestId: options.requestId,
+    level: options.level,
+    callNumber: options.callNumber,
+    providerCallNumber,
+    model,
+    status: response.status,
+  };
+
+  if (response.ok) {
+    const completion = await response.clone().json().catch(() => null);
+    console.log(JSON.stringify({
+      ...baseLog,
+      usage: {
+        prompt_tokens: completion?.usage?.prompt_tokens ?? null,
+        completion_tokens: completion?.usage?.completion_tokens ?? null,
+        total_tokens: completion?.usage?.total_tokens ?? null,
+      },
+    }));
+    return;
+  }
+
+  const errorBody = await response.clone().text();
+  let providerMessage = errorBody;
+  try {
+    const providerError = JSON.parse(errorBody)?.error;
+    providerMessage = providerError?.message || errorBody;
+  } catch {}
+
+  console.log(JSON.stringify({
+    ...baseLog,
+    retryAfter: response.headers.get('retry-after'),
+    remainingTokens: response.headers.get('x-ratelimit-remaining-tokens'),
+    remainingRequests: response.headers.get('x-ratelimit-remaining-requests'),
+    resetTokens: response.headers.get('x-ratelimit-reset-tokens'),
+    resetRequests: response.headers.get('x-ratelimit-reset-requests'),
+    providerMessage,
+  }));
 }
 
 function normalizeApiKey(value: string): string | null {
@@ -59,6 +110,8 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     });
 
   let activeModel = model;
+  let providerCallNumber = options.providerCallNumber ?? 0;
+  providerCallNumber += 1;
   let response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -70,7 +123,9 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
 
   // Fallback only to a second model if explicitly configured and different.
   if (!response.ok && response.status !== 429 && model === defaultModel && fallbackModel !== defaultModel) {
+    await logGroqResponse(response, options, model, providerCallNumber);
     activeModel = fallbackModel;
+    providerCallNumber += 1;
     response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -80,6 +135,8 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
       body: buildBody(fallbackModel),
     });
   }
+
+  await logGroqResponse(response, options, activeModel, providerCallNumber);
 
   if (!response.ok) {
     const errorBody = await response.text();
@@ -96,7 +153,12 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
       options.jsonMode !== false &&
       /failed to generate json/i.test(parsedMsg)
     ) {
-      return callChatAI({ ...options, model: activeModel, jsonMode: false });
+      return callChatAI({
+        ...options,
+        model: activeModel,
+        jsonMode: false,
+        providerCallNumber,
+      });
     }
 
     if (response.status === 429) {

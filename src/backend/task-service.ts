@@ -1,4 +1,5 @@
 // Backend services for generating and regenerating case studies
+import { randomUUID } from 'crypto';
 import { CaseStudy, GenerateRequest, RegenerateTaskRequest, Task } from '../shared/schema';
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
 import { compileGeneratePrompt, compileRegenerateTaskPrompt, resolveIndustry, resolveTaskCount } from './prompts';
@@ -28,6 +29,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
   const taskCount = resolveTaskCount(req, industry);
   const prompt = compileGeneratePrompt({ ...req, industry }, seed);
   const maxRetries = 2;
+  const requestId = randomUUID();
   let lastError: unknown;
   let retryGuidance = '';
 
@@ -40,6 +42,9 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         userPrompt: `${prompt}${retryGuidance}`,
         temperature: 0.65 + attempt * 0.1,
         maxTokens: taskCount >= 15 ? 7500 : (taskCount >= 10 ? 5000 : 3800),
+        requestId,
+        callNumber: attempt + 1,
+        level: req.level,
       });
 
       let parsed: unknown;
@@ -139,6 +144,9 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     systemPrompt: 'You regenerate a single Excel task. Output strictly valid JSON.',
     userPrompt: prompt,
     temperature: 0.75,
+    requestId: randomUUID(),
+    callNumber: 1,
+    level: caseStudy.level,
   });
 
   const parsed = JSON.parse(cleanJsonString(rawResponse));
