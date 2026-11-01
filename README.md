@@ -1,6 +1,6 @@
 # Generator Studi Kasus Excel (Bidang Admin & Portofolio)
 
-Aplikasi web modern untuk latihan dan simulasi tugas Microsoft Excel bidang administrasi perkantoran. Soal studi kasus digenerate secara dinamis oleh AI (**OpenAI ChatGPT gpt-4o-mini**), dataset realistis dibangkitkan secara deterministik oleh kode (**Faker.js + PRNG Seed**), dan hasilnya dapat diunduh langsung sebagai file **XLSX**, **CSV**, dan **PDF**.
+Aplikasi web modern untuk latihan dan simulasi tugas Microsoft Excel bidang administrasi perkantoran. Soal studi kasus digenerate secara dinamis melalui **Groq API**, dataset realistis dibangkitkan secara deterministik oleh kode (**Faker.js + PRNG Seed**), dan hasilnya dapat diunduh langsung sebagai file **XLSX**, **CSV**, dan **PDF**.
 
 Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backend**, serta siap dideploy langsung ke **Vercel** dengan konfigurasi serverless.
 
@@ -51,10 +51,9 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
    - Stopwatch pengerjaan (Mulai, Jeda, Reset).
    - Berbagi soal via URL parameter `?seed=...` sehingga soal dan dataset identik untuk latihan kelompok atau evaluasi rekrutmen.
 
-9. **Pilihan Kunci API Fleksibel**:
-   - **Proxy Serverless**: Menggunakan `GROQ_API_KEY` di environment variable server (aman untuk deployment publik).
-   - **BYOK (Bring Your Own Key)**: Pengguna dapat memasukkan Groq API Key pribadi di menu pengaturan lokal (`localStorage`).
-   - **Offline Fallback Ready**: Dilengkapi preset studi kasus offline berkualitas tinggi jika tidak ada API key yang terkonfigurasi.
+9. **Integrasi Groq API**:
+   - Generate menggunakan hanya `GROQ_API_KEY` dari environment variable server.
+   - API key tidak dikirim dari browser atau disimpan di `localStorage`; OpenAI tidak digunakan sebagai fallback.
 
 ---
 
@@ -78,7 +77,7 @@ generatedstudycaseexceladmin/
 │   │
 │   ├── frontend/                    # FRONTEND (UI Components, Hooks, Client Utilities)
 │   │   ├── components/              # Komponen antarmuka pengguna
-│   │   │   ├── Navbar.tsx           # Brand, API key modal trigger, dark mode toggle
+│   │   │   ├── Navbar.tsx           # Brand, panduan rumus, riwayat, dark mode toggle
 │   │   │   ├── GenerateForm.tsx     # Form pemilihan level, role, versi excel, seed
 │   │   │   ├── StickyNav.tsx        # Navigasi melayang lintas bagian dokumen
 │   │   │   ├── CaseHeader.tsx       # Judul, badge level, timer pengerjaan, share URL
@@ -90,7 +89,6 @@ generatedstudycaseexceladmin/
 │   │   │   ├── PortfolioSection.tsx # Brief klien, deliverables, rubrik, README template
 │   │   │   ├── PDFExportSection.tsx # Download PDF Soal & Kunci (posisi paling bawah)
 │   │   │   ├── HistoryModal.tsx     # Modal riwayat soal tersimpan
-│   │   │   └── SettingsModal.tsx    # Modal input BYOK Groq API Key
 │   │   └── utils/                   # Utilitas client-side
 │   │       ├── dataset-generator.ts # Generator baris dataset (Faker + PRNG + traps)
 │   │       ├── export-xlsx.ts       # Generator XLSX & CSV (SheetJS)
@@ -133,11 +131,11 @@ generatedstudycaseexceladmin/
    npm install
    ```
 
-3. (Opsional) Salin file lingkungan dan isi API Key OpenAI (ChatGPT):
+3. Atur API key Groq di environment server:
    ```bash
-   cp .env.example .env.local
+   GROQ_API_KEY=gsk_...
    ```
-   Isi `OPENAI_API_KEY=sk-...` di `.env.local` jika ingin menggunakan server proxy default. Jika tidak diisi, Anda tetap dapat memasukkan API Key langsung di UI (tombol "API Key" di navbar) atau menikmati studi kasus fallback offline secara langsung.
+   Untuk lokal, simpan pada `.env.local`. Untuk production, atur sebagai environment variable server di Vercel. Generate selalu menggunakan Groq dan tidak menerima API key dari browser atau fallback ke OpenAI.
 
 4. Jalankan server pengembangan:
    ```bash
@@ -156,22 +154,17 @@ generatedstudycaseexceladmin/
 
 Aplikasi ini 100% kompatibel dengan **Vercel Zero-Config Deployment**.
 
-### Opsi 1: Menggunakan Vercel CLI
+### Menggunakan Vercel
 ```bash
 npm install -g vercel
 vercel
 ```
-Jika diminta environment variables, tambahkan:
-- Key: `OPENAI_API_KEY`
-- Value: `<your_openai_api_key>` (opsional jika user menggunakan mode BYOK)
 
-### Opsi 2: Menggunakan Git / GitHub Integration
-1. Push repositori ini ke GitHub / GitLab.
-2. Buka dashboard [Vercel](https://vercel.com/) dan klik **Add New Project**.
-3. Import repositori ini.
-4. Pada bagian **Environment Variables**, tambahkan:
-   - `OPENAI_API_KEY`: Kunci API OpenAI dari [OpenAI Platform](https://platform.openai.com/api-keys)
-5. Klik **Deploy**. Aplikasi akan live dalam hitungan detik.
+Di project Vercel, buka **Settings → Environment Variables** dan tambahkan:
+- Key: `GROQ_API_KEY`
+- Value: API key dari Groq
+
+Pilih environment yang digunakan (Production/Preview/Development), simpan, lalu redeploy agar variable diterapkan. Aplikasi hanya memakai `GROQ_API_KEY` server dan endpoint Groq.
 
 ---
 

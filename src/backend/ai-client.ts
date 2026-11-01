@@ -1,5 +1,4 @@
 export interface AICompletionOptions {
-  apiKey?: string;
   systemPrompt?: string;
   userPrompt: string;
   temperature?: number;
@@ -8,31 +7,14 @@ export interface AICompletionOptions {
   jsonMode?: boolean;
 }
 
-function normalizeApiKey(value?: string): string | null {
+function normalizeApiKey(value: string): string | null {
   if (!value) return null;
   const cleaned = value.replace(/^\s*["']|["']\s*$/g, '').trim();
   return cleaned.length > 0 ? cleaned : null;
 }
 
-function resolveApiKey(explicitApiKey?: string): { key: string; source: string } | null {
-  const candidates: Array<{ value?: string; source: string }> = [
-    { value: explicitApiKey, source: 'request' },
-    { value: process.env.GROQ_API_KEY, source: 'GROQ_API_KEY' },
-    { value: process.env.OPENAI_API_KEY, source: 'OPENAI_API_KEY' },
-    { value: process.env.NEXT_PUBLIC_GROQ_API_KEY, source: 'NEXT_PUBLIC_GROQ_API_KEY' },
-    { value: process.env.NEXT_PUBLIC_OPENAI_API_KEY, source: 'NEXT_PUBLIC_OPENAI_API_KEY' },
-    { value: process.env.AI_API_KEY, source: 'AI_API_KEY' },
-    { value: process.env.OPENAI_KEY, source: 'OPENAI_KEY' },
-  ];
-
-  for (const candidate of candidates) {
-    const normalized = normalizeApiKey(candidate.value);
-    if (normalized) {
-      return { key: normalized, source: candidate.source };
-    }
-  }
-
-  return null;
+function getGroqApiKey(): string | null {
+  return normalizeApiKey(process.env.GROQ_API_KEY ?? '');
 }
 
 function getGroqPrimaryModel(): string {
@@ -49,24 +31,16 @@ function getGroqFallbackModel(primaryModel?: string): string {
 }
 
 export async function callChatAI(options: AICompletionOptions): Promise<string> {
-  const resolved = resolveApiKey(options.apiKey);
-  if (!resolved) {
+  const groqApiKey = getGroqApiKey();
+  if (!groqApiKey) {
     throw new Error(
-      'API Key tidak ditemukan. Pastikan environment variable GROQ_API_KEY atau OPENAI_API_KEY sudah diset di Vercel.'
+      'GROQ_API_KEY tidak ditemukan. Tambahkan API key Groq sebagai environment variable server di Vercel, lalu redeploy.'
     );
   }
 
-  const cleanKey = resolved.key;
-
-  // Detect provider dari prefix key
-  const isGroqKey = cleanKey.startsWith('gsk_');
-
-  const endpoint = isGroqKey
-    ? 'https://api.groq.com/openai/v1/chat/completions'
-    : 'https://api.openai.com/v1/chat/completions';
-
-  const defaultModel = isGroqKey ? getGroqPrimaryModel() : 'gpt-4o-mini';
-  const fallbackModel = isGroqKey ? getGroqFallbackModel(defaultModel) : 'gpt-4o-mini';
+  const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+  const defaultModel = getGroqPrimaryModel();
+  const fallbackModel = getGroqFallbackModel(defaultModel);
   const model = options.model || defaultModel;
 
   const messages: { role: string; content: string }[] = [];
@@ -89,19 +63,19 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${cleanKey}`,
+      Authorization: `Bearer ${groqApiKey}`,
     },
     body: buildBody(model),
   });
 
   // Fallback only to a second model if explicitly configured and different.
-  if (!response.ok && isGroqKey && model === defaultModel && fallbackModel !== defaultModel) {
+  if (!response.ok && model === defaultModel && fallbackModel !== defaultModel) {
     activeModel = fallbackModel;
     response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${cleanKey}`,
+        Authorization: `Bearer ${groqApiKey}`,
       },
       body: buildBody(fallbackModel),
     });
@@ -115,7 +89,6 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     } catch {}
 
     if (
-      isGroqKey &&
       response.status === 400 &&
       options.jsonMode !== false &&
       /failed to generate json/i.test(parsedMsg)
@@ -125,12 +98,12 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
 
     if (response.status === 429) {
       throw new Error(
-        'Limit kuota API tercapai (429). Tunggu beberapa saat lalu coba lagi.'
+        'Groq menolak permintaan dengan 429 (rate limit/kuota). Periksa limit dan pemakaian API key pada akun Groq yang terhubung di Vercel.'
       );
     }
     if (response.status === 401) {
       throw new Error(
-        'API Key tidak valid (401). Periksa kembali nilai GROQ_API_KEY atau OPENAI_API_KEY di Vercel.'
+        'GROQ_API_KEY ditolak Groq (401). Pastikan key valid dan sudah diatur pada environment deployment Vercel yang aktif, lalu redeploy.'
       );
     }
     throw new Error(`AI Error (${response.status}): ${parsedMsg}`);
