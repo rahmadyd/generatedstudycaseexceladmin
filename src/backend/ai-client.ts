@@ -5,6 +5,7 @@ export interface AICompletionOptions {
   temperature?: number;
   maxTokens?: number;
   model?: string;
+  jsonMode?: boolean;
 }
 
 function normalizeApiKey(value?: string): string | null {
@@ -80,9 +81,10 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
       messages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 3500,
-      response_format: { type: 'json_object' },
+      ...(options.jsonMode === false ? {} : { response_format: { type: 'json_object' } }),
     });
 
+  let activeModel = model;
   let response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -94,6 +96,7 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
 
   // Fallback only to a second model if explicitly configured and different.
   if (!response.ok && isGroqKey && model === defaultModel && fallbackModel !== defaultModel) {
+    activeModel = fallbackModel;
     response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -106,6 +109,20 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
 
   if (!response.ok) {
     const errorBody = await response.text();
+    let parsedMsg = errorBody;
+    try {
+      parsedMsg = JSON.parse(errorBody)?.error?.message || errorBody;
+    } catch {}
+
+    if (
+      isGroqKey &&
+      response.status === 400 &&
+      options.jsonMode !== false &&
+      /failed to generate json/i.test(parsedMsg)
+    ) {
+      return callChatAI({ ...options, model: activeModel, jsonMode: false });
+    }
+
     if (response.status === 429) {
       throw new Error(
         'Limit kuota API tercapai (429). Tunggu beberapa saat lalu coba lagi.'
@@ -116,10 +133,6 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
         'API Key tidak valid (401). Periksa kembali nilai GROQ_API_KEY atau OPENAI_API_KEY di Vercel.'
       );
     }
-    let parsedMsg = errorBody;
-    try {
-      parsedMsg = JSON.parse(errorBody)?.error?.message || errorBody;
-    } catch {}
     throw new Error(`AI Error (${response.status}): ${parsedMsg}`);
   }
 
