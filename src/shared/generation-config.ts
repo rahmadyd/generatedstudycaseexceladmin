@@ -2,11 +2,10 @@ import type { Level } from './schema';
 
 export interface GenerationLevelConfig {
   maxTokens: number;
+  repairMaxTokens: number;
   regenerateMaxTokens: number;
   stagedCaseMaxTokens?: number;
   stagedAnswerKeyMaxTokens?: number;
-  stagedPortfolioBriefMaxTokens?: number;
-  stagedPortfolioRubricMaxTokens?: number;
   minTasks: number;
   maxTasks: number;
   defaultTasks: number;
@@ -17,7 +16,8 @@ export interface GenerationLevelConfig {
 
 export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
   easy: {
-    maxTokens: 1200,
+    maxTokens: 2200,
+    repairMaxTokens: 3400,
     regenerateMaxTokens: 800,
     minTasks: 3,
     maxTasks: 4,
@@ -27,7 +27,8 @@ export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
     hintMaxChars: 140,
   },
   middle: {
-    maxTokens: 1800,
+    maxTokens: 2800,
+    repairMaxTokens: 4000,
     regenerateMaxTokens: 1000,
     minTasks: 4,
     maxTasks: 5,
@@ -37,30 +38,17 @@ export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
     hintMaxChars: 160,
   },
   advance: {
-    maxTokens: 2500,
+    maxTokens: 2800,
+    repairMaxTokens: 4000,
     regenerateMaxTokens: 1200,
-    stagedCaseMaxTokens: 1800,
-    stagedAnswerKeyMaxTokens: 700,
+    stagedCaseMaxTokens: 2600,
+    stagedAnswerKeyMaxTokens: 1200,
     minTasks: 4,
     maxTasks: 5,
     defaultTasks: 5,
     taskCountOptions: [4, 5],
     explanationMaxChars: 300,
     hintMaxChars: 180,
-  },
-  portfolio: {
-    maxTokens: 7500,
-    regenerateMaxTokens: 1800,
-    stagedCaseMaxTokens: 4000,
-    stagedAnswerKeyMaxTokens: 1700,
-    stagedPortfolioBriefMaxTokens: 900,
-    stagedPortfolioRubricMaxTokens: 900,
-    minTasks: 5,
-    maxTasks: 20,
-    defaultTasks: 6,
-    taskCountOptions: [5, 6, 8, 10, 15, 20],
-    explanationMaxChars: 500,
-    hintMaxChars: 220,
   },
 };
 

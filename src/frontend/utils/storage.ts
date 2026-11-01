@@ -1,4 +1,13 @@
-import { CaseStudy, Level, ExcelVersion, FormulaStyle, Industry, TaskCountMode } from '@/shared/schema';
+import {
+  CaseStudy,
+  CaseStudySchema,
+  Level,
+  LevelEnum,
+  ExcelVersion,
+  FormulaStyle,
+  Industry,
+  TaskCountMode,
+} from '@/shared/schema';
 import { GENERATION_CONFIG } from '@/shared/generation-config';
 
 const STORAGE_KEYS = {
@@ -44,7 +53,21 @@ export function safeSetStorage<T>(key: string, value: T): boolean {
 
 // Case History
 export function getSavedCasesHistory(): CaseStudy[] {
-  return safeGetStorage<CaseStudy[]>(STORAGE_KEYS.HISTORY, []);
+  const saved = safeGetStorage<unknown>(STORAGE_KEYS.HISTORY, []);
+  if (!Array.isArray(saved)) {
+    console.warn('Saved case history is not an array; ignoring stored history.');
+    return [];
+  }
+
+  const history = saved.flatMap((item) => {
+    const parsed = CaseStudySchema.safeParse(item);
+    return parsed.success ? [parsed.data] : [];
+  });
+  if (history.length !== saved.length) {
+    console.info('Removed saved cases that no longer match the supported case schema.');
+    safeSetStorage(STORAGE_KEYS.HISTORY, history);
+  }
+  return history;
 }
 
 export function saveCaseToHistory(caseStudy: CaseStudy): void {
@@ -69,6 +92,13 @@ export function getSavedSettings(): SavedSettings {
   };
   const saved = safeGetStorage<Partial<SavedSettings>>(STORAGE_KEYS.SETTINGS, {});
   const merged = { ...defaults, ...saved };
+  const levelResult = LevelEnum.safeParse(merged.level);
+  if (!levelResult.success) {
+    merged.level = defaults.level;
+    merged.taskCount = defaults.taskCount;
+  } else {
+    merged.level = levelResult.data;
+  }
   if (!GENERATION_CONFIG[merged.level].taskCountOptions.includes(merged.taskCount)) {
     merged.taskCount = GENERATION_CONFIG[merged.level].defaultTasks;
   }

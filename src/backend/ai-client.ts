@@ -24,6 +24,13 @@ export class GroqApiError extends Error {
   }
 }
 
+export class GroqOutputTruncatedError extends Error {
+  constructor() {
+    super('Respons Groq terpotong karena mencapai batas token output.');
+    this.name = 'GroqOutputTruncatedError';
+  }
+}
+
 function parseRetryAfterSeconds(value: string | null): number | undefined {
   if (!value) return undefined;
   const seconds = Number(value);
@@ -60,6 +67,7 @@ async function logGroqResponse(
         completion_tokens: completion?.usage?.completion_tokens ?? null,
         total_tokens: completion?.usage?.total_tokens ?? null,
       },
+      finishReason: completion?.choices?.[0]?.finish_reason ?? null,
     }));
     return;
   }
@@ -234,6 +242,9 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
   }
 
   const json = await response.json();
+  if (json.choices?.[0]?.finish_reason === 'length') {
+    throw new GroqOutputTruncatedError();
+  }
   const content = json.choices?.[0]?.message?.content;
   if (!content) {
     throw new Error('AI tidak mengembalikan konten yang valid.');

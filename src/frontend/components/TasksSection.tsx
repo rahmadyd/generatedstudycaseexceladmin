@@ -61,8 +61,7 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
     .map((task) => task.no);
   const allAvailableKeysRevealed = availableKeyTaskNumbers.length > 0 &&
     availableKeyTaskNumbers.every((taskNo) => revealedKeys.includes(taskNo));
-  const hasMissingContent = caseStudy.answerKeyStatus === 'pending' ||
-    (caseStudy.level === 'portfolio' && caseStudy.portfolioStatus === 'pending');
+  const hasMissingContent = caseStudy.answerKeyStatus === 'pending';
 
   const handleCheck = (taskNo: number) => {
     onToggleTask(taskNo);
@@ -192,12 +191,7 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
                   <div className="text-xs leading-relaxed">
                     <p className="font-bold">Sebagian materi belum tersedia.</p>
                     <p>
-                      {caseStudy.answerKeyStatus === 'pending'
-                        ? 'Kunci jawaban belum tersedia.'
-                        : 'Kunci jawaban sudah tersedia.'}
-                      {caseStudy.level === 'portfolio' && caseStudy.portfolioStatus === 'pending'
-                        ? ' Brief atau rubrik portofolio juga belum lengkap.'
-                        : ''}
+                      Kunci jawaban belum tersedia.
                       {' '}Kasus dan tugas tetap dapat digunakan.
                     </p>
                     {missingContentError && <p className="mt-1 font-semibold">{missingContentError}</p>}

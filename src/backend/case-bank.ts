@@ -58,7 +58,6 @@ export function getCaseBankFallback(request: GenerateRequest): CaseStudy | null 
       tasks: template.tasks.slice(0, taskCount),
       answerKey: template.answerKey.filter((answer) => selectedTaskNumbers.has(answer.task)),
       answerKeyStatus: 'available',
-      ...(template.level === 'portfolio' ? { portfolioStatus: 'available' as const } : {}),
     };
     const validation = validateAndSanitizeCaseStudy(candidate, request.excelVersion);
     if (!validation.valid || !validation.data) {

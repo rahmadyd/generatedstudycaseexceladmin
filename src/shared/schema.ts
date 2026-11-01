@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const LevelEnum = z.enum(['easy', 'middle', 'advance', 'portfolio']);
+export const LevelEnum = z.enum(['easy', 'middle', 'advance']);
 export type Level = z.infer<typeof LevelEnum>;
 
 export const ExcelVersionEnum = z.enum(['2016/2019', 'Microsoft 365']);
@@ -84,15 +84,7 @@ export const FormulasSchema = z.object({
 });
 export type FormulasSpec = z.infer<typeof FormulasSchema>;
 
-export const PortfolioBriefSchema = z.object({
-  clientBrief: z.string(),
-  deliverables: z.array(z.string()),
-  readmeTemplate: z.string(),
-});
-export type PortfolioBrief = z.infer<typeof PortfolioBriefSchema>;
-
 export const AnswerKeyStatusEnum = z.enum(['pending', 'available']);
-export const PortfolioStatusEnum = z.enum(['pending', 'available']);
 export const CaseStudySourceEnum = z.enum(['ai', 'bank']);
 
 export const CaseStudySchema = z.object({
@@ -116,9 +108,6 @@ export const CaseStudySchema = z.object({
   dataset: DatasetSchema,
   answerKey: z.array(AnswerKeyItemSchema).default([]),
   answerKeyStatus: AnswerKeyStatusEnum.optional(),
-  portfolioStatus: PortfolioStatusEnum.optional(),
-  rubric: z.array(z.string()).optional(),
-  portfolioBrief: PortfolioBriefSchema.optional(),
 });
 export type CaseStudy = z.infer<typeof CaseStudySchema>;
 

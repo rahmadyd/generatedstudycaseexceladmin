@@ -4,7 +4,6 @@ import {
   AnswerKeyItemSchema,
   CaseStudy,
   GenerateRequest,
-  PortfolioBriefSchema,
   RegenerateTaskRequest,
   Task,
 } from '../shared/schema';
@@ -12,14 +11,12 @@ import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
 import {
   compileAnswerKeyPrompt,
   compileGeneratePrompt,
-  compilePortfolioBriefPrompt,
-  compilePortfolioRubricPrompt,
   compileRegenerateTaskPrompt,
   resolveIndustry,
   resolveTaskCount,
 } from './prompts';
 import { callGroqChat } from './groq';
-import { GroqApiError } from './ai-client';
+import { GroqApiError, GroqOutputTruncatedError } from './ai-client';
 import { GENERATION_CONFIG, GENERATION_REPAIR_ATTEMPTS } from '../shared/generation-config';
 import {
   getCaseStudyAlignmentIssues,
@@ -69,103 +66,66 @@ function parseAIJson(response: string, label: string): Record<string, unknown> {
 }
 
 async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy> {
-  const rawResponse = await callGroqChat({
-    systemPrompt: 'Generate validated Excel answer keys. Return compact JSON only.',
-    userPrompt: compileAnswerKeyPrompt(caseStudy),
-    temperature: 0.3,
-    maxTokens: GENERATION_CONFIG[caseStudy.level].stagedAnswerKeyMaxTokens,
-    requestId: randomUUID(),
-    callNumber: 1,
-    level: caseStudy.level,
-  });
-  const parsed = parseAIJson(rawResponse, 'Gagal membaca kunci jawaban bertahap');
-  const answerKey = AnswerKeyItemSchema.array().parse(parsed.answerKey).map((answer) => ({
-    ...answer,
-    formula: normalizeExcelFormulaLocale(answer.formula),
-  }));
-  const candidate: CaseStudy = {
-    ...caseStudy,
-    answerKey,
-    answerKeyStatus: 'pending',
-  };
-  const issues = getTaskAnswerAlignmentIssues(candidate);
-  if (issues.length > 0) {
-    throw new Error(`Kunci jawaban bertahap tidak lolos pemeriksaan: ${issues.join('; ')}`);
+  const prompt = compileAnswerKeyPrompt(caseStudy);
+  const requestId = randomUUID();
+  const config = GENERATION_CONFIG[caseStudy.level];
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const rawResponse = await callGroqChat({
+        systemPrompt: 'Generate validated Excel answer keys. Return compact JSON only.',
+        userPrompt: attempt === 0
+          ? prompt
+          : `${prompt}\n\nReturn complete valid JSON only. Shorten every explanation; do not omit quotes or closing braces.`,
+        temperature: 0.3,
+        maxTokens: attempt === 0
+          ? config.stagedAnswerKeyMaxTokens ?? config.maxTokens
+          : config.repairMaxTokens,
+        requestId,
+        callNumber: attempt + 1,
+        level: caseStudy.level,
+      });
+      const parsed = parseAIJson(rawResponse, 'Gagal membaca kunci jawaban bertahap');
+      const answerKey = AnswerKeyItemSchema.array().parse(parsed.answerKey).map((answer) => ({
+        ...answer,
+        formula: normalizeExcelFormulaLocale(answer.formula),
+      }));
+      const candidate: CaseStudy = {
+        ...caseStudy,
+        answerKey,
+        answerKeyStatus: 'pending',
+      };
+      const issues = getTaskAnswerAlignmentIssues(candidate);
+      if (issues.length > 0) {
+        throw new Error(`Kunci jawaban bertahap tidak lolos pemeriksaan: ${issues.join('; ')}`);
+      }
+      return { ...candidate, answerKeyStatus: 'available' };
+    } catch (error) {
+      const message = (error as Error).message ?? '';
+      const canRetry = error instanceof GroqOutputTruncatedError ||
+        message.includes('Gagal membaca kunci jawaban bertahap');
+      if (attempt === 0 && canRetry) continue;
+      throw error;
+    }
   }
-  return { ...candidate, answerKeyStatus: 'available' };
-}
-
-async function generatePortfolioBrief(caseStudy: CaseStudy): Promise<CaseStudy> {
-  const rawResponse = await callGroqChat({
-    systemPrompt: 'Write portfolio client brief and deliverables. Return compact JSON only.',
-    userPrompt: compilePortfolioBriefPrompt(caseStudy),
-    temperature: 0.3,
-    maxTokens: GENERATION_CONFIG.portfolio.stagedPortfolioBriefMaxTokens,
-    requestId: randomUUID(),
-    callNumber: 1,
-    level: caseStudy.level,
-  });
-  const parsed = parseAIJson(rawResponse, 'Gagal membaca brief portofolio');
-  const portfolioBrief = PortfolioBriefSchema.parse(parsed.portfolioBrief);
-  return { ...caseStudy, portfolioBrief };
-}
-
-async function generatePortfolioRubric(caseStudy: CaseStudy): Promise<CaseStudy> {
-  const rawResponse = await callGroqChat({
-    systemPrompt: 'Create a concise portfolio assessment rubric. Return compact JSON only.',
-    userPrompt: compilePortfolioRubricPrompt(caseStudy),
-    temperature: 0.3,
-    maxTokens: GENERATION_CONFIG.portfolio.stagedPortfolioRubricMaxTokens,
-    requestId: randomUUID(),
-    callNumber: 1,
-    level: caseStudy.level,
-  });
-  const parsed = parseAIJson(rawResponse, 'Gagal membaca rubrik portofolio');
-  if (!Array.isArray(parsed.rubric) ||
-      !parsed.rubric.every((item): item is string => typeof item === 'string' && Boolean(item.trim()))) {
-    throw new Error('Rubrik portofolio tidak valid.');
-  }
-  return { ...caseStudy, rubric: parsed.rubric };
+  throw new Error('Gagal membuat kunci jawaban setelah satu kali percobaan ulang.');
 }
 
 async function completeStagedContent(initialCase: CaseStudy): Promise<CaseStudy> {
   let caseStudy = { ...initialCase };
-  const stages: Array<{ name: string; run: (current: CaseStudy) => Promise<CaseStudy> }> = [
-    { name: 'answer_key', run: generateStagedAnswerKey },
-  ];
-  if (caseStudy.level === 'portfolio') {
-    stages.push(
-      { name: 'portfolio_brief', run: generatePortfolioBrief },
-      { name: 'portfolio_rubric', run: generatePortfolioRubric },
-    );
-  }
-
-  for (const stage of stages) {
-    const isComplete = stage.name === 'answer_key'
-      ? hasCompleteAnswerKey(caseStudy)
-      : stage.name === 'portfolio_brief'
-        ? Boolean(caseStudy.portfolioBrief)
-        : Boolean(caseStudy.rubric?.length);
-    if (isComplete) continue;
-
+  if (!hasCompleteAnswerKey(caseStudy)) {
     try {
-      caseStudy = await stage.run(caseStudy);
+      caseStudy = await generateStagedAnswerKey(caseStudy);
     } catch (error) {
       console.error('Staged content generation failed:', JSON.stringify({
-        stage: stage.name,
+        stage: 'answer_key',
         seed: caseStudy.seed,
         message: (error as Error).message,
       }));
-      throw new StagedContentGenerationError(caseStudy, stage.name, error);
+      throw new StagedContentGenerationError(caseStudy, 'answer_key', error);
     }
   }
 
   caseStudy.answerKeyStatus = hasCompleteAnswerKey(caseStudy) ? 'available' : 'pending';
-  if (caseStudy.level === 'portfolio') {
-    caseStudy.portfolioStatus = caseStudy.portfolioBrief && caseStudy.rubric?.length
-      ? 'available'
-      : 'pending';
-  }
   return caseStudy;
 }
 
@@ -174,11 +134,11 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
   const seed = req.seed && req.seed.trim() !== '' ? req.seed.trim() : generateRandomSeed();
   const industry = resolveIndustry(req.industry, seed);
   const taskCount = resolveTaskCount(req, industry);
-  const isStaged = req.level === 'advance' || req.level === 'portfolio';
+  const isStaged = req.level === 'advance';
   const prompt = compileGeneratePrompt(
     { ...req, industry },
     seed,
-    isStaged ? { omitAnswerKey: true, omitPortfolio: true } : {},
+    isStaged ? { omitAnswerKey: true } : {},
   );
   const requestId = randomUUID();
   let lastError: unknown;
@@ -191,9 +151,11 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         systemPrompt: 'Create a practical Excel case in Indonesian. Return compact JSON only in the requested schema.',
         userPrompt: `${prompt}${retryGuidance}`,
         temperature: 0.65 + attempt * 0.1,
-        maxTokens: isStaged
-          ? GENERATION_CONFIG[req.level].stagedCaseMaxTokens
-          : GENERATION_CONFIG[req.level].maxTokens,
+        maxTokens: attempt > 0
+          ? GENERATION_CONFIG[req.level].repairMaxTokens
+          : isStaged
+            ? GENERATION_CONFIG[req.level].stagedCaseMaxTokens
+            : GENERATION_CONFIG[req.level].maxTokens,
         requestId,
         callNumber: attempt + 1,
         level: req.level,
@@ -204,31 +166,33 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
       try {
         parsed = JSON.parse(cleanJsonString(rawResponse));
       } catch (e) {
-        throw new Error(`Gagal parse JSON dari AI: ${(e as Error).message}`);
+        const parseError = new Error(`Gagal parse JSON dari AI: ${(e as Error).message}`);
+        retryGuidance = '\n\nRETRY OUTPUT FORMAT: The previous response was incomplete or invalid JSON. Return one complete compact JSON object matching the requested schema. Shorten descriptions, hints, explanations, and enum lists; do not omit closing quotes or braces. Do not include markdown or text outside the JSON.';
+        throw parseError;
       }
 
-      if (typeof parsed === 'object' && parsed !== null) {
-        (parsed as Record<string, unknown>).seed = seed;
-        (parsed as Record<string, unknown>).level = req.level;
-        (parsed as Record<string, unknown>).role = req.role;
-        (parsed as Record<string, unknown>).excelVersion = req.excelVersion;
-        (parsed as Record<string, unknown>).industry = industry;
-        (parsed as Record<string, unknown>).formulaStyle = req.formulaStyle ?? 'classic';
-        (parsed as Record<string, unknown>).structuredReferenceAt = req.structuredReferenceAt ?? true;
-        (parsed as Record<string, unknown>).taskCountMode = req.taskCountMode ?? 'auto';
-        (parsed as Record<string, unknown>).taskCount = taskCount;
-        (parsed as Record<string, unknown>).createdAt = new Date().toISOString();
-        (parsed as Record<string, unknown>).id = `case-${seed}`;
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        retryGuidance = '\n\nRETRY OUTPUT FORMAT: Return one complete JSON object matching the requested schema, with no markdown or extra text.';
+        throw new Error('Respons AI bukan object JSON yang valid.');
       }
+
+      (parsed as Record<string, unknown>).seed = seed;
+      (parsed as Record<string, unknown>).level = req.level;
+      (parsed as Record<string, unknown>).role = req.role;
+      (parsed as Record<string, unknown>).excelVersion = req.excelVersion;
+      (parsed as Record<string, unknown>).industry = industry;
+      (parsed as Record<string, unknown>).formulaStyle = req.formulaStyle ?? 'classic';
+      (parsed as Record<string, unknown>).structuredReferenceAt = req.structuredReferenceAt ?? true;
+      (parsed as Record<string, unknown>).taskCountMode = req.taskCountMode ?? 'auto';
+      (parsed as Record<string, unknown>).taskCount = taskCount;
+      (parsed as Record<string, unknown>).createdAt = new Date().toISOString();
+      (parsed as Record<string, unknown>).id = `case-${seed}`;
 
       const validation = validateAndSanitizeCaseStudy(parsed, req.excelVersion);
       if (validation.valid && validation.data) {
         if (isStaged) {
           validation.data.answerKey = [];
           validation.data.answerKeyStatus = 'pending';
-          validation.data.portfolioBrief = undefined;
-          validation.data.rubric = undefined;
-          if (req.level === 'portfolio') validation.data.portfolioStatus = 'pending';
         }
 
         // Jika AI menghasilkan lebih dari taskCount yang diminta, pangkas ke taskCount
@@ -241,14 +205,8 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         }
         const alignmentIssues = getCaseStudyAlignmentIssues(validation.data, req.role, industry);
         alignmentIssues.push(...getTaskAnswerAlignmentIssues(validation.data));
-        if (taskCount >= 15) {
-          if (validation.data.tasks.length < taskCount - 2) {
-            alignmentIssues.push(`jumlah tugas harus mendekati ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
-          }
-        } else {
-          if (validation.data.tasks.length !== taskCount) {
-            alignmentIssues.push(`jumlah tugas harus tepat ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
-          }
+        if (validation.data.tasks.length !== taskCount) {
+          alignmentIssues.push(`jumlah tugas harus tepat ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
         }
         if (alignmentIssues.length === 0) {
           return validation.data;
@@ -261,12 +219,21 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
     } catch (err) {
       lastError = err;
       const msg = (err as Error).message || '';
+      const malformedJson = err instanceof GroqOutputTruncatedError ||
+        msg.includes('Gagal parse JSON dari AI') ||
+        msg.includes('bukan object JSON');
+      if (
+        attempt < GENERATION_REPAIR_ATTEMPTS &&
+        malformedJson
+      ) {
+        retryGuidance ||= '\n\nRETRY OUTPUT FORMAT: Return one complete compact JSON object only. Shorten all prose and keep the requested schema unchanged.';
+      }
       // Provider rejections won't improve by retrying and may worsen rate limits.
       if (
         (err instanceof GroqApiError && err.status === 429) ||
         msg.includes('429') ||
         msg.includes('401') ||
-        msg.includes('tidak valid') ||
+        (msg.includes('tidak valid') && !malformedJson) ||
         msg.includes('tidak ditemukan')
       ) {
         throw err;

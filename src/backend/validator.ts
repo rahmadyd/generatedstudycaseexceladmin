@@ -256,18 +256,16 @@ export function getTaskAnswerAlignmentIssues(
         }
       }
 
-      if (caseStudy.level !== 'portfolio') {
-        const referencedSheets = Array.from(
-          formula.matchAll(/(?:'((?:[^']|'')+)'|([A-Za-z_][A-Za-z0-9_. ]*))!/g),
-          (match) => (match[1] ?? match[2]).replace(/''/g, "'").trim().toLocaleLowerCase('id'),
-        );
-        const datasetSheetName = caseStudy.dataset.sheetName.toLocaleLowerCase('id');
-        for (const sheetName of referencedSheets) {
-          if (sheetName !== datasetSheetName) {
-            issues.push(
-              `kunci tugas ${task.no} merujuk sheet sumber "${sheetName}" yang tidak tersedia; dataset hanya menyediakan "${caseStudy.dataset.sheetName}"`,
-            );
-          }
+      const referencedSheets = Array.from(
+        formula.matchAll(/(?:'((?:[^']|'')+)'|([A-Za-z_][A-Za-z0-9_. ]*))!/g),
+        (match) => (match[1] ?? match[2]).replace(/''/g, "'").trim().toLocaleLowerCase('id'),
+      );
+      const datasetSheetName = caseStudy.dataset.sheetName.toLocaleLowerCase('id');
+      for (const sheetName of referencedSheets) {
+        if (sheetName !== datasetSheetName) {
+          issues.push(
+            `kunci tugas ${task.no} merujuk sheet sumber "${sheetName}" yang tidak tersedia; dataset hanya menyediakan "${caseStudy.dataset.sheetName}"`,
+          );
         }
       }
     }

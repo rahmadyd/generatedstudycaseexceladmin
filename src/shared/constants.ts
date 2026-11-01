@@ -74,13 +74,6 @@ export const LEVEL_CONFIG: Record<
     recommended: ['INDEX-MATCH', 'SUMPRODUCT', 'Pivot Table', 'Conditional Formatting Rumus', 'Named Range', 'Nested IF/IFS'],
     forbidden: ['Macro/VBA'],
   },
-  portfolio: {
-    label: 'Portofolio',
-    badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800',
-    description: 'Studi kasus komprehensif tingkat profesional dengan Client Brief, Rubrik, dan Dashboard.',
-    recommended: ['Multi-sheet modeling', 'Interactive Dashboard (Pivot + Slicer + Chart)', 'Dynamic Formulas', 'Data Cleansing Pipeline'],
-    forbidden: ['Data kotor tidak dibersihkan', 'Formula statis hardcoded'],
-  },
 };
 
 export const M365_ONLY_FORMULAS = ['XLOOKUP', 'FILTER', 'UNIQUE', 'SORTBY', 'LET', 'LAMBDA', 'XMATCH', 'SEQUENCE', 'HSTACK'];

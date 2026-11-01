@@ -9,7 +9,6 @@ import { ScenarioSection } from './components/ScenarioSection';
 import { DatasetSection } from './components/DatasetSection';
 import { TasksSection } from './components/TasksSection';
 import { FormulaClues } from './components/FormulaClues';
-import { PortfolioSection } from './components/PortfolioSection';
 import { PDFExportSection } from './components/PDFExportSection';
 import { HistoryModal } from './components/HistoryModal';
 
@@ -179,8 +178,7 @@ export default function App() {
       setCaseStudy(newCase);
       setMissingContentRetryAfterSeconds(0);
       setMissingContentError(
-        newCase.answerKeyStatus === 'pending' ||
-          (newCase.level === 'portfolio' && newCase.portfolioStatus === 'pending')
+        newCase.answerKeyStatus === 'pending'
           ? 'Kasus berhasil dibuat, tetapi sebagian materi belum berhasil dilengkapi.'
           : null,
       );
@@ -205,10 +203,7 @@ export default function App() {
         if (newCase.taskCount !== undefined) url.searchParams.set('taskCount', String(newCase.taskCount));
         window.history.replaceState({}, '', url.toString());
       }
-      if (
-        newCase.answerKeyStatus === 'pending' ||
-        (newCase.level === 'portfolio' && newCase.portfolioStatus === 'pending')
-      ) {
+      if (newCase.answerKeyStatus === 'pending') {
         await handleRetryMissingContent(newCase);
       }
       return;
@@ -247,14 +242,13 @@ export default function App() {
           setMissingContentError(data.error || 'Batas penggunaan AI tercapai.');
           return;
         }
-        throw new Error(data.error || 'Gagal melengkapi kunci dan bagian portofolio.');
+        throw new Error(data.error || 'Gagal melengkapi kunci jawaban.');
       }
 
       if (!updatedCase) throw new Error('Respons server tidak menyertakan studi kasus.');
       setMissingContentRetryAfterSeconds(0);
       setMissingContentError(
-        updatedCase.answerKeyStatus === 'pending' ||
-          (updatedCase.level === 'portfolio' && updatedCase.portfolioStatus === 'pending')
+        updatedCase.answerKeyStatus === 'pending'
           ? 'Sebagian materi masih belum tersedia. Silakan coba lagi.'
           : null,
       );
@@ -406,14 +400,6 @@ export default function App() {
 
         {/* 6. Clue rumus */}
         <FormulaClues formulas={caseStudy.formulas} />
-
-        {/* Mode Portofolio (Khusus Level Portofolio) */}
-        {caseStudy.level === 'portfolio' && (
-          <PortfolioSection
-            portfolioBrief={caseStudy.portfolioBrief}
-            rubric={caseStudy.rubric}
-          />
-        )}
 
         {/* 7. Export PDF */}
         <PDFExportSection caseStudy={caseStudy} datasetRows={datasetRows} />

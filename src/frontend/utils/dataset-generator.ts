@@ -20,7 +20,7 @@ export type DataRow = Record<string, string | number | null>;
 
 /**
  * Generates realistic dataset rows based on CaseStudy.dataset schema and seed.
- * For Middle, Advance, and Portfolio levels, automatically injects intentional data traps!
+ * For Middle and Advance levels, automatically injects intentional data traps!
  */
 export function generateDatasetRows(caseStudy: CaseStudy): DataRow[] {
   const seedNum = cyrb53(caseStudy.seed || 'excel-admin-seed');
@@ -42,7 +42,7 @@ export function generateDatasetRows(caseStudy: CaseStudy): DataRow[] {
     rows.push(row);
   }
 
-  // Inject intentional data traps for level Middle, Advance, Portfolio
+  // Inject intentional data traps for Middle and Advance levels
   if (isTrapLevel && rows.length > 20) {
     injectDataTraps(rows, columns, seedNum);
   }

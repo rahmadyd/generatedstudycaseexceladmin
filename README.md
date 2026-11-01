@@ -1,4 +1,4 @@
-# Generator Studi Kasus Excel (Bidang Admin & Portofolio)
+# Generator Studi Kasus Excel (Bidang Admin)
 
 Aplikasi web modern untuk latihan dan simulasi tugas Microsoft Excel bidang administrasi perkantoran. Soal studi kasus digenerate secara dinamis melalui **Groq API**, dataset realistis dibangkitkan secara deterministik oleh kode (**Faker.js + PRNG Seed**), dan hasilnya dapat diunduh langsung sebagai file **XLSX**, **CSV**, dan **PDF**.
 
@@ -8,11 +8,10 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
 
 ## 🚀 Fitur Utama
 
-1. **Pilihan 4 Tingkat Kesulitan (Level)**:
+1. **Pilihan 3 Tingkat Kesulitan (Level)**:
    - **Easy**: SUM, AVERAGE, COUNT, MIN, MAX, IF dasar, formatting, sort & filter.
    - **Middle**: VLOOKUP / XLOOKUP, SUMIF(S), COUNTIF(S), IFERROR, TEXT, TRIM, LEFT/RIGHT/MID, Data Validation.
    - **Advance**: INDEX-MATCH multi-kriteria, SUMPRODUCT, Pivot Table dinamis, Conditional Formatting rumus, Named Range, Nested IF/IFS.
-   - **Portofolio**: Simulasi proyek profesional mencakup Brief Klien, Target Deliverables, Multi-sheet modeling, Rubrik Penilaian, dan Template README.md.
 
 2. **6 Pilihan Bidang Administrasi**:
    - Admin Penjualan
@@ -56,7 +55,7 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
    - API key tidak dikirim dari browser atau disimpan di `localStorage`; OpenAI tidak digunakan sebagai fallback.
    - Model default `openai/gpt-oss-120b`; model utama dan cadangan dapat diatur melalui `GROQ_MODEL` dan `GROQ_FALLBACK_MODEL`.
    - Jumlah tugas dibatasi sesuai level agar respons lebih ringkas: Easy 3–4, Middle 4–5, Advance 4–5.
-   - Generate Advance dan Portfolio dipisah menjadi beberapa tahap. Jika tahap kunci/brief/rubrik gagal, kasus yang sudah berhasil dibuat tetap dapat digunakan dan bagian yang belum lengkap bisa dicoba ulang.
+   - Generate Advance dipisah menjadi tahap kasus dan kunci jawaban. Jika tahap kunci gagal, kasus yang sudah berhasil dibuat tetap dapat digunakan dan kunci dapat dicoba ulang.
    - Jika Groq mengembalikan 429 saat membuat kasus, aplikasi memakai bank kasus statis hanya untuk kombinasi level, role, industri, gaya rumus, dan jumlah tugas yang tersedia. Kasus cadangan ditandai di header; jika tidak ada kombinasi yang cocok, aplikasi tetap menampilkan error 429. Bank saat ini hanya mencakup role Keuangan/Kasir pada industri Akuntansi dan keuangan, dengan gaya rumus classic dan jumlah tugas terbatas.
    - Log pemakaian Groq memuat timestamp UTC. Ekspor log JSONL dari Vercel dapat diringkas per tanggal/level dengan `npm run report:groq -- <path-log-jsonl>`; laporan memuat rata-rata token, kegagalan panggilan provider, dan jumlah 429 tanpa database tambahan.
 
@@ -93,7 +92,6 @@ generatedstudycaseexceladmin/
 │   │   │   ├── TasksSection.tsx     # Checklist tugas, progress bar, ganti tugas N
 │   │   │   ├── FormulaClues.tsx     # Clue rumus: Disarankan / Boleh / Dilarang
 │   │   │   ├── AnswerKeySection.tsx # Kunci jawaban akordeon tersembunyi
-│   │   │   ├── PortfolioSection.tsx # Brief klien, deliverables, rubrik, README template
 │   │   │   ├── PDFExportSection.tsx # Download PDF Soal & Kunci (posisi paling bawah)
 │   │   │   ├── HistoryModal.tsx     # Modal riwayat soal tersimpan
 │   │   └── utils/                   # Utilitas client-side
@@ -192,7 +190,7 @@ Laporan dikelompokkan menurut tanggal UTC dan level. “Panggilan” berarti sat
 
 ---
 
-## 🏆 Nilai Plus untuk Portofolio
+## 🏆 Nilai Plus Teknis
 
 Aplikasi ini mendemonstrasikan kapabilitas teknis end-to-end:
 - **Full-Stack Separation**: Pemisahan modular antara serverless backend logic dan client-side presentation layer.

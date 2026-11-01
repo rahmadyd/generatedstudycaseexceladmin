@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Generator Studi Kasus Excel (Bidang Admin & Portofolio)',
+  title: 'Generator Studi Kasus Excel (Bidang Admin)',
   description:
     'Aplikasi web untuk latihan Excel bidang admin. Soal dibuat oleh AI (Groq), dataset dibangkitkan oleh kode (faker.js + seed), unduh XLSX/CSV dan PDF.',
   icons: {

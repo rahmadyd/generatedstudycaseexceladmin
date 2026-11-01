@@ -147,8 +147,8 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
           <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
             Pilih Tingkat Kesulitan (Level)
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {(['easy', 'middle', 'advance', 'portfolio'] as Level[]).map((lvl) => {
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {(['easy', 'middle', 'advance'] as Level[]).map((lvl) => {
               const cfg = LEVEL_CONFIG[lvl];
               const isSelected = level === lvl;
               return (

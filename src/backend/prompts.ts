@@ -10,9 +10,9 @@ Context: {{companyName}}; {{theme}}; {{period}}. Industry guidance: {{industryPr
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
 Task count: exactly {{taskCount}} | Seed: {{seed}} | Formula policy: {{levelFormulaPolicy}}
 Keep hints within {{hintMaxChars}} characters and explanations within {{explanationMaxChars}} characters.
-Rules: Indonesian; role/industry-specific; dataset schema is the only source sheet; match every instruction, hint, target, formula, and condition; use only allowed formulas and available columns; conditional aggregates must implement every criterion; formula tasks need one copyable formula; no fixed results for random data; exactly {{taskCount}} tasks. {{answerKeyRule}} {{portfolioRule}}
+Rules: Indonesian; role/industry-specific; dataset schema is the only source sheet; match every instruction, hint, target, formula, and condition; use only allowed formulas and available columns; conditional aggregates must implement every criterion; formula tasks need one copyable formula; no fixed results for random data; exactly {{taskCount}} tasks. {{answerKeyRule}}
 Use Indonesian Excel separators (semicolons; English function names). Return compact JSON, no markdown or unused fields, with this shape:
-{"title":"string","scenario":"string","tasks":[{"no":1,"instruction":"string","hint":"string","targetResult":"string"}],"dataTraps":["string"],"formulas":{"recommended":["string"],"allowed":["string"],"forbidden":["string"]},"dataset":{"sheetName":"string","rows":150,"columns":[{"name":"string","type":"date|text|number|int|currency|enum","values":["..."],"range":[1,100]}]},{{answerKeyShape}}{{portfolioShape}}}`;
+{"title":"string","scenario":"string","tasks":[{"no":1,"instruction":"string","hint":"string","targetResult":"string"}],"dataTraps":["string"],"formulas":{"recommended":["string"],"allowed":["string"],"forbidden":["string"]},"dataset":{"sheetName":"string","rows":150,"columns":[{"name":"string","type":"date|text|number|int|currency|enum","values":["..."],"range":[1,100]}]},"answerKey":[{"task":1,"formula":"=...","explanation":"..."}]}`;
 const COMPACT_DEFAULT_REGENERATE_TASK_PROMPT = `Regenerate only task {{taskNo}} and its matching answer for this Indonesian Excel case.
 Case: {{title}} | Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}} | Scenario: {{scenario}}
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
@@ -26,7 +26,7 @@ const DEFAULT_GENERATE_PROMPT = `You are an expert curriculum designer and admin
 Your job is to generate a comprehensive, realistic Excel practice case study tailored to the given specifications.
 
 Parameters:
-- Level: {{level}} (Options: easy, middle, advance, portfolio)
+- Level: {{level}} (Options: easy, middle, advance)
 - Administrative Role: {{role}} (e.g., Admin Penjualan, Admin Gudang/Inventory, Admin HRD/Absensi, Admin Keuangan/Kasir, Admin Pengadaan/Purchasing, Sekretaris/Admin Surat)
 - Administrative Role Responsibilities: {{roleDetails}}
 - Excel Version: {{excelVersion}} (Options: "2016/2019" or "Microsoft 365")
@@ -50,10 +50,6 @@ Parameters:
    - Data traps: insert intentional traps like text dates, trailing spaces in codes, empty cells, numbers stored as text.
 3. **advance**:
    - Formulas: INDEX-MATCH, SUMPRODUCT, Pivot Table, Conditional Formatting with formulas, Named Ranges, nested IF/IFS, dynamic arrays (if M365).
-4. **portfolio**:
-   - Comprehensive multi-faceted challenge. Includes all skills up to Advance + executive dashboard (pivot tables + charts + slicers), structured multi-sheet planning, and complete client deliverables.
-   - Must include rubric and portfolioBrief with client brief, deliverables, and a complete markdown README template.
-
 ### CRITICAL RULES:
 - The selected administrative role and industry are mandatory. The scenario, tasks, dataset columns, and enum values must all describe work in the selected role at the selected industry. Do not substitute another role or industry. Use the industry-specific vocabulary above in both the scenario and dataset; do not make a generic unrelated retail/sales case unless that is the selected industry.
 - Dataset rows will be generated from the dataset schema. Give every column a clear meaning for this role and industry. For enum columns, provide realistic values for the selected industry (for example crop/product/asset/service names appropriate to the industry), never generic unrelated products. Include enough operational columns to calculate the requested task answers.
@@ -117,13 +113,7 @@ Schema:
   },
   "answerKey": [
     { "task": 1, "formula": "=FORMULA(...)", "explanation": "string" }
-  ],
-  "rubric": ["string"],
-  "portfolioBrief": {
-    "clientBrief": "string",
-    "deliverables": ["string"],
-    "readmeTemplate": "string"
-  }
+  ]
 }
 \`\`\`
 Return ONLY JSON without any markdown code fences or conversational text.`;
@@ -213,7 +203,7 @@ export function loadPromptTemplate(templateName: string): string {
 export function compileGeneratePrompt(
   req: GenerateRequest,
   seed: string,
-  options: { omitAnswerKey?: boolean; omitPortfolio?: boolean } = {},
+  options: { omitAnswerKey?: boolean } = {},
 ): string {
   const template = loadPromptTemplate('generate-case.md');
 
@@ -230,7 +220,6 @@ export function compileGeneratePrompt(
   const formulaPolicy = LEVEL_CONFIG[req.level];
   const versionForbiddenFormulas = req.excelVersion === '2016/2019' ? M365_ONLY_FORMULAS : [];
   const omitAnswerKey = options.omitAnswerKey ?? false;
-  const omitPortfolio = options.omitPortfolio ?? false;
 
   const replacements: Record<string, string> = {
     '{{level}}': req.level,
@@ -258,15 +247,9 @@ export function compileGeneratePrompt(
     '{{answerKeyRule}}': omitAnswerKey
       ? 'Return an empty answerKey array; answer keys are generated separately.'
       : 'Return exactly one matching answer key for every task.',
-    '{{portfolioRule}}': omitPortfolio
-      ? 'Omit rubric and portfolioBrief; these are generated separately.'
-      : 'Easy/Middle/Advance omit portfolio fields. Portfolio must include rubric and portfolioBrief.',
-    '{{answerKeyShape}}': `${omitAnswerKey
+    '{{answerKeyShape}}': omitAnswerKey
       ? '"answerKey": []'
-      : '"answerKey": [{ "task": 1, "formula": "=FORMULA(...)", "explanation": "string" }]'}${omitPortfolio ? '' : ','}`,
-    '{{portfolioShape}}': omitPortfolio
-      ? ''
-      : '"rubric": ["string"], "portfolioBrief": { "clientBrief": "string", "deliverables": ["string"], "readmeTemplate": "string" }',
+      : '"answerKey": [{ "task": 1, "formula": "=FORMULA(...)", "explanation": "string" }]',
   };
 
   let compiled = template;
@@ -293,22 +276,6 @@ Available source sheet: ${caseStudy.dataset.sheetName}; columns: ${JSON.stringif
 Recommended formulas: ${JSON.stringify(caseStudy.formulas.recommended)}; forbidden formulas: ${JSON.stringify(caseStudy.formulas.forbidden)}.
 Return exactly one answer per task in task order. Each answer must satisfy every condition in its instruction, use only available columns and allowed formulas, and match the requested target. Do not invent extra sheets, lookup tables, or fixed dataset results. Use one copyable formula for formula tasks and concise procedural steps for non-formula tasks. Use English function names and semicolons between arguments. Keep each explanation within ${GENERATION_CONFIG[caseStudy.level].explanationMaxChars} characters.
 {"answerKey":[{"task":1,"formula":"=...","explanation":"..."}]}`;
-}
-
-export function compilePortfolioBriefPrompt(caseStudy: CaseStudy): string {
-  return `Write only the client brief and deliverables for this Indonesian Excel portfolio case. Return compact JSON only.
-Role: ${caseStudy.role}; industry: ${caseStudy.industry ?? '-'}; scenario: ${caseStudy.scenario}
-Tasks: ${JSON.stringify(caseStudy.tasks.map(({ no, instruction, targetResult }) => ({ no, instruction, targetResult })))}
-The brief and deliverables must match the existing scenario and tasks; do not add new data sheets or tasks.
-{"portfolioBrief":{"clientBrief":"...","deliverables":["..."],"readmeTemplate":"..."}}`;
-}
-
-export function compilePortfolioRubricPrompt(caseStudy: CaseStudy): string {
-  return `Create a concise assessment rubric for this Indonesian Excel portfolio case. Return compact JSON only.
-Role: ${caseStudy.role}; industry: ${caseStudy.industry ?? '-'}; scenario: ${caseStudy.scenario}
-Tasks: ${JSON.stringify(caseStudy.tasks.map(({ no, instruction, targetResult }) => ({ no, instruction, targetResult })))}
-The rubric must assess the supplied work only and must not introduce new tasks.
-{"rubric":["..."]}`;
 }
 
 export function resolveIndustry(industry: GenerateRequest['industry'], seed: string): Exclude<Industry, 'Acak'> {

@@ -16,7 +16,6 @@ RULES
 - For conditional aggregates, implement all conditions in the formula; filtering worksheet rows is not a formula condition.
 - Formula tasks need one copyable formula. Procedural tasks need concise steps. Never claim fixed calculated values for randomly generated rows.
 - Return exactly {{taskCount}} numbered tasks. {{answerKeyRule}}
-- {{portfolioRule}}
 - Keep JSON compact; no markdown or unused fields.
 
 OUTPUT SHAPE
@@ -40,5 +39,4 @@ OUTPUT SHAPE
     ]
   },
   {{answerKeyShape}}
-  {{portfolioShape}}
 }

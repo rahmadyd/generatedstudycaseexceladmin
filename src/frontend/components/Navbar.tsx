@@ -36,7 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
-                Generator Studi Kasus Excel Bidang Admin &amp; Portofolio
+                Generator Studi Kasus Excel Bidang Admin
               </p>
             </div>
           </div>

@@ -1,7 +1,6 @@
 import * as XLSX from 'xlsx';
 import { CaseStudy } from '@/shared/schema';
 import { DataRow } from './dataset-generator';
-import { ROLE_PROFILES } from '@/shared/constants';
 
 /**
  * Builds a column-letter map from the dataset columns.
@@ -32,55 +31,9 @@ export function exportDatasetToXLSX(caseStudy: CaseStudy, rows: DataRow[]) {
   const wb = XLSX.utils.book_new();
   const columnMap = buildColumnMap(caseStudy.dataset.columns);
 
-  if (caseStudy.level === 'portfolio' && caseStudy.portfolioBrief) {
-    // 1. README sheet
-    const readmeData = [
-      ['STUDI KASUS ADMIN EXCEL - PORTOFOLIO'],
-      ['Judul', caseStudy.title],
-      ['Bidang Admin', ROLE_PROFILES[caseStudy.role]?.label ?? caseStudy.role],
-      ['Industri', caseStudy.industry ?? '-'],
-      ['Level', caseStudy.level.toUpperCase()],
-      ['Versi Excel', caseStudy.excelVersion],
-      ['Gaya Rumus', caseStudy.formulaStyle === 'modern' ? 'Modern (Structured Reference)' : 'Classic (Cell Reference)'],
-      ['Seed', caseStudy.seed],
-      [''],
-      ['BRIEF KLIEN'],
-      [caseStudy.portfolioBrief.clientBrief],
-      [''],
-      ['DELIVERABLES'],
-      ...caseStudy.portfolioBrief.deliverables.map((d, i) => [`${i + 1}. ${d}`]),
-      [''],
-      ['DAFTAR TUGAS'],
-      ...caseStudy.tasks.map((t) => [`Tugas ${t.no}`, t.instruction, `Target: ${t.targetResult}`]),
-    ];
-    const wsReadme = XLSX.utils.aoa_to_sheet(readmeData);
-    XLSX.utils.book_append_sheet(wb, wsReadme, '01_README');
-
-    // 2. RAW_DATA sheet
-    const wsRaw = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, wsRaw, '02_RAW_DATA');
-
-    // 3. CALC_ENGINE template placeholder
-    const calcTemplate = [
-      ['CALCULATION ENGINE / DATA CLEANSING HELPER'],
-      ['Gunakan sheet ini untuk meletakkan formula pembantu, intermediate lookup, dan summary pivot.'],
-    ];
-    const wsCalc = XLSX.utils.aoa_to_sheet(calcTemplate);
-    XLSX.utils.book_append_sheet(wb, wsCalc, '03_CALC_ENGINE');
-
-    // 4. EXECUTIVE_DASHBOARD placeholder
-    const dashTemplate = [
-      ['EXECUTIVE DASHBOARD'],
-      ['Rancang pivot chart, kartu skor KPI, dan slicer interaktif pada lembar kerja ini.'],
-    ];
-    const wsDash = XLSX.utils.aoa_to_sheet(dashTemplate);
-    XLSX.utils.book_append_sheet(wb, wsDash, '04_DASHBOARD');
-  } else {
-    // Standard single-sheet dataset
-    const sheetName = (caseStudy.dataset.sheetName || 'Data_Admin').substring(0, 31);
-    const ws = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  }
+  const sheetName = (caseStudy.dataset.sheetName || 'Data_Admin').substring(0, 31);
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
   // Always add a KUNCI_JAWABAN sheet with full context
   const answerSheetData = buildAnswerKeySheet(caseStudy, columnMap);
