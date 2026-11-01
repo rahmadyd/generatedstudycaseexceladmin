@@ -37,7 +37,7 @@ Parameters:
 - In `answerKey`, each formula MUST NOT use any formulas listed under `forbidden`.
 - In `answerKey`, the `explanation` MUST be a thorough educational explanation:
   1) Alasan mengapa rumus/fungsi ini yang paling tepat digunakan untuk kasus tersebut.
-  2) Bedah setiap argumen/komponen rumus (misal: apa yang dicari, tabel mana yang diacu, kenapa memakai tanda $ untuk mengunci sel/rentang).
+  2) Bedah setiap argumen/kondisi rumus secara gamblang (misal pada SUMIFS: sebutkan rentang mana yang dijumlahkan, rentang mana tempat mengecek syarat, dan syarat/kondisi apa yang harus cocok; pada IF: kondisi apa yang diuji, apa hasil jika kondisi benar, apa hasil jika kondisi salah).
   3) Jelaskan secara gamblang parameter penting (misal: mengapa ada angka 0 / FALSE pada VLOOKUP/MATCH untuk Exact Match, dan mengapa jika tidak diisi 0 bisa salah data).
   4) Tips praktis agar tidak error (seperti penggunaan titik koma ; dan pembersihan spasi).
 - Use Indonesian Excel regional notation in every formula example, hint, and answer key: use semicolons (`;`) between function arguments and commas (`,`) for decimal values. Keep English function names. For example: `=IF(A1>0; 1,5; 0)` and `=SUMIFS(C:C; A:A; "Jakarta")`. Do not change commas inside quoted text.

@@ -17,6 +17,8 @@ import {
   Terminal,
   Lightbulb,
   Info,
+  Layers,
+  ArrowRight,
 } from 'lucide-react';
 import { CaseStudy, Task } from '@/shared/schema';
 import { normalizeExcelFormulaLocale } from '@/shared/excel-formula-locale';
@@ -322,6 +324,60 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
                           <Terminal className="w-4 h-4 text-gray-500 flex-shrink-0" />
                           <code>{normalizedFormula}</code>
                         </div>
+
+                        {/* Pola / Blueprint & Bedah Kondisi Rumus */}
+                        {breakdown?.pattern && (
+                          <div className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-emerald-200 dark:border-emerald-800/80 space-y-2.5 shadow-sm">
+                            <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                              <Layers className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                              <span>Pola Struktur Rumus &amp; Kondisi:</span>
+                            </div>
+
+                            {/* Blueprint Syntax Box */}
+                            <div className="bg-emerald-50/70 dark:bg-emerald-950/40 p-2.5 rounded-lg border border-emerald-200/80 dark:border-emerald-800/50">
+                              <code className="text-xs font-mono font-semibold text-emerald-900 dark:text-emerald-200 block break-words">
+                                {breakdown.pattern}
+                              </code>
+                              {breakdown.patternDescription && (
+                                <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1 leading-relaxed">
+                                  {breakdown.patternDescription}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Detail Tiap Kondisi / Parameter */}
+                            {breakdown.conditions.length > 0 && (
+                              <div className="space-y-1.5 pt-1">
+                                <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 block">
+                                  Penerapan kondisi pada rumus ini:
+                                </span>
+                                <div className="grid grid-cols-1 gap-1.5">
+                                  {breakdown.conditions.map((cond, cIdx) => (
+                                    <div
+                                      key={cIdx}
+                                      className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700/60 text-xs"
+                                    >
+                                      <div className="flex items-center space-x-1 sm:w-48 flex-shrink-0">
+                                        <ArrowRight className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                                        <code className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 font-mono text-[11px] font-bold">
+                                          {cond.actualValue}
+                                        </code>
+                                      </div>
+                                      <div className="flex-1">
+                                        <span className="font-semibold text-gray-900 dark:text-white mr-1.5">
+                                          ({cond.role}):
+                                        </span>
+                                        <span className="text-gray-600 dark:text-gray-300 text-[11px]">
+                                          {cond.explanation}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Alasan Pemilihan Rumus */}
                         {breakdown?.reason && (
