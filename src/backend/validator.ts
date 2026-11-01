@@ -1,5 +1,5 @@
 import { CaseStudy, CaseStudySchema } from '../shared/schema';
-import { getIndustryColumnValues, INDUSTRY_PROFILES, M365_ONLY_FORMULAS, ROLE_PROFILES } from '../shared/constants';
+import { getIndustryColumnValues, INDUSTRY_PROFILES, LEVEL_CONFIG, M365_ONLY_FORMULAS, ROLE_PROFILES } from '../shared/constants';
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
 
 export interface ValidationResult {
@@ -21,6 +21,22 @@ const ROLE_DATASET_SIGNALS: Record<string, string[]> = {
 function containsAny(text: string, terms: string[]): boolean {
   const normalized = text.toLocaleLowerCase('id');
   return terms.some((term) => normalized.includes(term.toLocaleLowerCase('id')));
+}
+
+function containsWholeValue(text: string, value: string): boolean {
+  const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapedValue}($|[^\\p{L}\\p{N}])`, 'iu').test(text);
+}
+
+function getExcelColumnName(index: number): string {
+  let columnNumber = index + 1;
+  let columnName = '';
+  while (columnNumber > 0) {
+    const remainder = (columnNumber - 1) % 26;
+    columnName = String.fromCharCode(65 + remainder) + columnName;
+    columnNumber = Math.floor((columnNumber - 1) / 26);
+  }
+  return columnName;
 }
 
 export function getCaseStudyAlignmentIssues(
@@ -53,6 +69,164 @@ export function getCaseStudyAlignmentIssues(
   }
   if (!containsAny(datasetDescription, industryProfile.signals)) {
     issues.push(`kolom/nilai dataset tidak spesifik untuk industri ${industry}`);
+  }
+
+  return issues;
+}
+
+export function getTaskAnswerAlignmentIssues(
+  caseStudy: CaseStudy,
+  taskNumbers?: number[],
+): string[] {
+  const issues: string[] = [];
+  const tasks = taskNumbers
+    ? caseStudy.tasks.filter((task) => taskNumbers.includes(task.no))
+    : caseStudy.tasks;
+  const answerKey = taskNumbers
+    ? caseStudy.answerKey.filter((answer) => taskNumbers.includes(answer.task))
+    : caseStudy.answerKey;
+  const taskNumbersInCase = new Set(caseStudy.tasks.map((task) => task.no));
+
+  if (!taskNumbers) {
+    if (taskNumbersInCase.size !== caseStudy.tasks.length) {
+      issues.push('nomor tugas harus unik');
+    }
+    if (caseStudy.tasks.some((task, index) => task.no !== index + 1)) {
+      issues.push('nomor tugas harus berurutan dari 1');
+    }
+  }
+
+  for (const task of tasks) {
+    const answers = answerKey.filter((answer) => answer.task === task.no);
+    if (answers.length !== 1) {
+      issues.push(`tugas ${task.no} harus memiliki tepat satu kunci jawaban yang cocok`);
+      continue;
+    }
+
+    const formula = answers[0].formula.trim();
+    const functionNames = new Set(
+      Array.from(formula.matchAll(/\b([A-Z][A-Z0-9.]*)\s*\(/gi), (match) => match[1].toUpperCase()),
+    );
+
+    const forbiddenFormulas = [
+      ...caseStudy.formulas.forbidden,
+      ...LEVEL_CONFIG[caseStudy.level].forbidden,
+      ...(caseStudy.excelVersion === '2016/2019' ? M365_ONLY_FORMULAS : []),
+    ];
+    for (const forbidden of forbiddenFormulas) {
+      const forbiddenFunctions = forbidden.toUpperCase().match(/[A-Z][A-Z0-9.]*/g) ?? [];
+      const usedForbidden = forbiddenFunctions.find((name) =>
+        new RegExp(`\\b${name}\\s*\\(`, 'i').test(formula),
+      );
+      if (usedForbidden) {
+        issues.push(`kunci tugas ${task.no} memakai fungsi terlarang ${usedForbidden}`);
+      }
+    }
+
+    const isAggregate = /\b(rata-rata|rerata|average|total|jumlahkan|frekuensi|persentase|jumlah keseluruhan|nilai tertinggi|nilai terendah)\b/i
+      .test(task.instruction);
+    const mentionsFilterCriterion =
+      /\b(berdasarkan|khusus|hanya|filter|difilter|syarat|kriteria)\b/i.test(task.instruction) ||
+      /\buntuk\s+(layanan|kategori|status|shift|wilayah|departemen|jenis|cabang)\b/i.test(task.instruction);
+    const instructionLower = task.instruction.toLocaleLowerCase('id');
+    const namesEnumValue = caseStudy.dataset.columns.some((column) =>
+      column.values?.some((value) => containsWholeValue(instructionLower, value)),
+    );
+    const hasCriteriaAwareAggregate =
+      /\b(?:SUMIFS?|COUNTIFS?|AVERAGEIFS?|SUMPRODUCT|SUBTOTAL)\s*\(/i.test(formula) ||
+      (/\b(?:AVERAGE|SUM)\s*\(\s*IF\s*\(/i.test(formula) &&
+        (caseStudy.excelVersion === 'Microsoft 365' ||
+          /ctrl\s*\+\s*shift\s*\+\s*enter/i.test(answers[0].explanation))) ||
+      (functionNames.has('IF') &&
+        /\b(?:AVERAGE|SUM|COUNT)\s*\(/i.test(formula) &&
+        /\b(kolom bantu|helper column)\b/i.test(`${task.instruction} ${task.hint}`));
+
+    if (
+      formula.startsWith('=') &&
+      isAggregate &&
+      (mentionsFilterCriterion || namesEnumValue) &&
+      !hasCriteriaAwareAggregate
+    ) {
+      issues.push(
+        `tugas ${task.no} meminta agregasi dengan kriteria, tetapi rumus tidak menerapkan kriteria tersebut (AVERAGE/SUM/COUNT biasa tetap menghitung baris yang difilter)`,
+      );
+    }
+
+    if (formula.startsWith('=')) {
+      const taskText = `${task.instruction} ${task.hint}`.toLocaleLowerCase('id');
+      const normalizedTaskText = taskText.replace(/[_\s]+/g, ' ');
+      const formulaWithoutText = formula.replace(/"(?:[^"]|"")*"/g, '""');
+      const referencedColumns = new Set(
+        Array.from(
+          formulaWithoutText.matchAll(/\$?([A-Z]{1,3})\$?\d+/gi),
+          (match) => ({
+            letter: match[1].toUpperCase(),
+            isSheetReference: formulaWithoutText[match.index! - 1] === '!',
+          }),
+        ),
+      );
+      const localReferencedColumns = new Set(
+        Array.from(referencedColumns)
+          .filter((reference) => !reference.isSheetReference)
+          .map((reference) => reference.letter),
+      );
+      const mentionedDatasetColumns = caseStudy.dataset.columns
+        .map((column, index) => ({
+          name: column.name,
+          columnLetter: getExcelColumnName(index),
+          normalizedName: column.name.replace(/[_\s]+/g, ' ').toLocaleLowerCase('id'),
+          values: caseStudy.dataset.columns[index].values ?? [],
+        }))
+        .filter((column) => {
+          if (column.values.some((value) => containsWholeValue(taskText, value))) {
+            return true;
+          }
+          if (normalizedTaskText.includes(column.normalizedName)) {
+            const isOutputStatus =
+              column.normalizedName === 'status' &&
+              /\b(beri|tentukan|klasifikasikan|isi|buat)\s+status\b|\bberstatus\b/i.test(taskText);
+            return !isOutputStatus;
+          }
+          const genericTerms = new Set([
+            'transaksi',
+            'data',
+            'baris',
+            'nomor',
+            'invoice',
+            'voucher',
+            'jumlah',
+            'total',
+            'kode',
+            'nama',
+            'barang',
+            'produk',
+            'status',
+          ]);
+          return column.normalizedName
+            .split(' ')
+            .filter((part) => part.length >= 3 && !genericTerms.has(part))
+            .some((part) => taskText.includes(part));
+        });
+
+      for (const column of mentionedDatasetColumns) {
+        const formulaReferencesColumn = caseStudy.formulaStyle === 'modern'
+          ? formula.includes(`[${column.name}]`)
+          : localReferencedColumns.has(column.columnLetter);
+        if (!formulaReferencesColumn) {
+          issues.push(
+            `tugas ${task.no} menyebut kolom ${column.name}, tetapi rumus tidak merujuk kolom tersebut`,
+          );
+        }
+      }
+    }
+  }
+
+  if (!taskNumbers) {
+    for (const answer of caseStudy.answerKey) {
+      if (!taskNumbersInCase.has(answer.task)) {
+        issues.push(`kunci jawaban merujuk ke tugas ${answer.task} yang tidak ada`);
+      }
+    }
   }
 
   return issues;
@@ -147,7 +321,10 @@ export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVers
     ...item,
     formula: normalizeExcelFormulaLocale(item.formula),
   }));
-  const forbidden = (caseStudy.formulas?.forbidden || []).map((f) => f.toUpperCase().trim());
+  const forbidden = [
+    ...(caseStudy.formulas?.forbidden || []),
+    ...LEVEL_CONFIG[caseStudy.level].forbidden,
+  ].map((formula) => formula.toUpperCase().trim());
   const excelVersion = expectedExcelVersion || caseStudy.excelVersion || 'Microsoft 365';
 
   // If Excel version is 2016/2019, M365-only functions must be forbidden and removed from recommended
@@ -160,20 +337,25 @@ export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVers
         (f) => f.toUpperCase().trim() !== m365Formula
       );
     }
-    caseStudy.formulas.forbidden = Array.from(new Set(forbidden));
   }
-
-  // Sanitize answerKey if it accidentally uses a forbidden formula
-  for (const item of caseStudy.answerKey) {
-    const formulaUpper = (item.formula || '').toUpperCase();
-    for (const forb of forbidden) {
-      const regex = new RegExp(`\\b${forb}\\b`, 'i');
-      if (regex.test(formulaUpper)) {
-        // Soft sanitization rather than hard crash
-        item.explanation = `${item.explanation || ''} (Catatan: Hindari ${forb} sesuai aturan level).`.trim();
-      }
-    }
-  }
+  caseStudy.formulas.forbidden = Array.from(new Set(forbidden));
+  const forbiddenSet = new Set(caseStudy.formulas.forbidden);
+  const usesForbiddenFormula = (formula: string) => {
+    const formulaNames = new Set<string>(
+      formula.toUpperCase().match(/[A-Z][A-Z0-9.]*/g) ?? [],
+    );
+    return Array.from(forbiddenSet).some((forbiddenFormula) =>
+      (forbiddenFormula.match(/[A-Z][A-Z0-9.]*/g) ?? []).some((name) =>
+        formulaNames.has(name),
+      ),
+    );
+  };
+  caseStudy.formulas.recommended = caseStudy.formulas.recommended.filter(
+    (formula) => !usesForbiddenFormula(formula),
+  );
+  caseStudy.formulas.allowed = caseStudy.formulas.allowed.filter(
+    (formula) => !usesForbiddenFormula(formula),
+  );
 
   // Ensure dataset rows is reasonable (100 to 500)
   if (caseStudy.dataset) {

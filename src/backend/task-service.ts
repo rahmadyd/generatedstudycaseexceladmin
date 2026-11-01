@@ -3,7 +3,11 @@ import { CaseStudy, GenerateRequest, RegenerateTaskRequest, Task } from '../shar
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
 import { compileGeneratePrompt, compileRegenerateTaskPrompt, resolveIndustry, resolveTaskCount } from './prompts';
 import { callGroqChat } from './groq';
-import { getCaseStudyAlignmentIssues, validateAndSanitizeCaseStudy } from './validator';
+import {
+  getCaseStudyAlignmentIssues,
+  getTaskAnswerAlignmentIssues,
+  validateAndSanitizeCaseStudy,
+} from './validator';
 
 function cleanJsonString(str: string): string {
   let cleaned = str.trim();
@@ -64,10 +68,14 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         // Jika AI menghasilkan lebih dari taskCount yang diminta, pangkas ke taskCount
         if (validation.data.tasks.length > taskCount) {
           validation.data.tasks = validation.data.tasks.slice(0, taskCount);
-          validation.data.answerKey = validation.data.answerKey.slice(0, taskCount);
+          const retainedTaskNumbers = new Set(validation.data.tasks.map((task) => task.no));
+          validation.data.answerKey = validation.data.answerKey.filter((answer) =>
+            retainedTaskNumbers.has(answer.task),
+          );
         }
 
         const alignmentIssues = getCaseStudyAlignmentIssues(validation.data, req.role, industry);
+        alignmentIssues.push(...getTaskAnswerAlignmentIssues(validation.data));
         if (taskCount >= 15) {
           if (validation.data.tasks.length < taskCount - 2) {
             alignmentIssues.push(`jumlah tugas harus mendekati ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
@@ -132,24 +140,28 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
   const newTask: Task = parsed.task;
   const newAnswer = parsed.answerKey;
 
-  if (!newTask?.instruction) throw new Error('Format tugas baru dari AI tidak sesuai.');
+  if (!newTask?.instruction || !newTask?.hint || !newTask?.targetResult || !newAnswer?.formula) {
+    throw new Error('Format tugas baru dari AI tidak lengkap (instruksi, petunjuk, target, dan kunci wajib tersedia).');
+  }
 
   const finalTasks = caseStudy.tasks.map((t) =>
     t.no === taskNo ? { ...newTask, no: taskNo } : t
   );
 
-  let finalAnswerKey = caseStudy.answerKey;
-  if (newAnswer?.formula) {
-    finalAnswerKey = caseStudy.answerKey.map((a) =>
-      a.task === taskNo
-        ? {
-            task: taskNo,
-            formula: normalizeExcelFormulaLocale(newAnswer.formula),
-            explanation: newAnswer.explanation || '',
-          }
-        : a
-    );
+  const replacementAnswer = {
+    task: taskNo,
+    formula: normalizeExcelFormulaLocale(newAnswer.formula),
+    explanation: newAnswer.explanation || '',
+  };
+  const finalAnswerKey = [
+    ...caseStudy.answerKey.filter((answer) => answer.task !== taskNo),
+    replacementAnswer,
+  ];
+  const regeneratedCase = { ...caseStudy, tasks: finalTasks, answerKey: finalAnswerKey };
+  const alignmentIssues = getTaskAnswerAlignmentIssues(regeneratedCase, [taskNo]);
+  if (alignmentIssues.length > 0) {
+    throw new Error(`Tugas baru tidak selaras dengan kunci jawaban: ${alignmentIssues.join('; ')}`);
   }
 
-  return { ...caseStudy, tasks: finalTasks, answerKey: finalAnswerKey };
+  return regeneratedCase;
 }

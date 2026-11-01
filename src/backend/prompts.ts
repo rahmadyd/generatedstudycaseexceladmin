@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { GenerateRequest, Industry } from '../shared/schema';
-import { ADMIN_ROLES, getRecommendedTaskCount, INDUSTRY_PROFILES, ROLE_PROFILES, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
+import { GenerateRequest, Industry, Level } from '../shared/schema';
+import { ADMIN_ROLES, getRecommendedTaskCount, INDUSTRY_PROFILES, LEVEL_CONFIG, M365_ONLY_FORMULAS, ROLE_PROFILES, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
 
 const DEFAULT_GENERATE_PROMPT = `You are an expert curriculum designer and administrative business analyst who designs realistic Excel case studies for administrative roles in Indonesia.
 Your job is to generate a comprehensive, realistic Excel practice case study tailored to the given specifications.
@@ -15,6 +15,7 @@ Parameters:
 - Structured Reference @ setting: {{structuredReferenceAt}}
 - Industry/Company context: {{companyName}} (Industry: {{industry}}, Theme: {{theme}}, Target Period: {{period}})
 - Industry-specific business and dataset guidance: {{industryProfile}}
+- Formula policy for this level: {{levelFormulaPolicy}}
 - Task Count: {{taskCount}}
 - Language: Indonesian
 - Random Seed: {{seed}}
@@ -22,6 +23,7 @@ Parameters:
 ### Level Guidelines:
 1. **easy**:
    - Formulas: SUM, AVERAGE, COUNT, MIN, MAX, IF, basic number and date formatting, sort, filter.
+   - If a task asks for an aggregate for only some rows, do not claim that filtering the sheet makes AVERAGE/SUM/COUNT ignore hidden rows. When conditional aggregate functions are forbidden, use the allowed basic functions in one array formula, such as \`=AVERAGE(IF(criteria_range=criteria; average_range; ""))\`. Explain that Microsoft 365 accepts it normally and Excel 2016/2019 requires Ctrl+Shift+Enter.
    - Forbidden: VLOOKUP, XLOOKUP, INDEX, MATCH, Pivot Table, Macro/VBA.
 2. **middle**:
    - Formulas: VLOOKUP (or XLOOKUP if Microsoft 365), SUMIF, SUMIFS, COUNTIF, COUNTIFS, IFERROR, TEXT, LEFT, RIGHT, MID, Data Validation.
@@ -40,6 +42,10 @@ Parameters:
 - Do NOT make fake download links! The dataset schema will be used by our code generator to create the real XLSX/CSV file.
 - Provide a clear, realistic Indonesian administrative scenario.
 - In answerKey, each formula MUST NOT use any formulas listed under forbidden.
+- Treat each task, hint, target, and answer as one contract: the answer formula must perform every filter/condition stated by the task, use the matching dataset columns, and produce the requested measure. Do not merely describe a manual filter before applying an unfiltered AVERAGE/SUM/COUNT; those functions still include filtered-out rows.
+- Before returning JSON, verify each formula-based task against its answer: every required criterion and referenced data column is present in the single formula, every task number has exactly one matching answer, and no answer uses a forbidden or unsupported formula.
+- For formula-based tasks, the answerKey formula field must be one copyable Excel formula, not prose or a sequence of formulas. Keep procedural tasks (Pivot Table, Data Validation, documentation) as concise step instructions.
+- Never invent a fixed numeric targetResult for rows that the application generates randomly. Use a verifiable outcome such as the expected output type, status, or a result the learner can compare after calculating it.
 - In answerKey, the explanation MUST be a thorough educational explanation:
   1) Alasan mengapa rumus/fungsi ini yang paling tepat digunakan untuk kasus tersebut.
   2) Bedah setiap argumen/kondisi rumus secara gamblang (misal pada SUMIFS: sebutkan rentang mana yang dijumlahkan, rentang mana tempat mengecek syarat, dan syarat/kondisi apa yang harus cocok; pada IF: kondisi apa yang diuji, apa hasil jika kondisi benar, apa hasil jika kondisi salah).
@@ -54,6 +60,7 @@ Parameters:
   - instruction: clear administrative assignment
   - hint: clue on which columns/logic to use
   - targetResult: benchmark/target figure or validation outcome that the user can verify without peeking at the answer key.
+- Every hint must name the same column(s), filter criteria, and calculation as its instruction and answer. For array formulas, identify the criteria range and value range and mention the required legacy array entry when applicable.
 - dataset must have:
   - sheetName: string
   - rows: number (100 to 300)
@@ -109,6 +116,7 @@ Current Case:
 - Role: {{role}}
 - Role Responsibilities: {{roleDetails}}
 - Industry: {{industry}}
+- Formula policy for this level: {{levelFormulaPolicy}}
 - Scenario: {{scenario}}
 - Excel Version: {{excelVersion}}
 - Formula Reference Style: {{formulaStyle}}
@@ -127,6 +135,9 @@ CRITICAL RULES:
 - "answerKey": { "task": {{taskNo}}, "formula": "=...", "explanation": "..." }
 - In "answerKey", "explanation" MUST be detailed: jelaskan alasan pemilihan rumus, bedah fungsi tiap argumen, dan terangkan mengapa parameter penting digunakan (misal: kenapa harus 0/FALSE untuk exact match, kenapa ada tanda $ untuk kunci rentang).
 - The formula MUST NOT use any formulas in forbidden list: {{forbiddenFormulas}}!
+- The new instruction, hint, target, and answer must describe the same operation. The formula must calculate the requested measure over the exact stated criteria and only reference available columns. An unfiltered AVERAGE/SUM/COUNT does not become criteria-aware when rows are manually filtered. If conditional aggregate functions are forbidden, use an allowed single array formula such as \`=AVERAGE(IF(criteria_range=criteria; average_range; ""))\`; explain Ctrl+Shift+Enter for Excel 2016/2019.
+- For formula-based tasks, the answerKey formula field must contain one copyable Excel formula, not prose or multiple formula steps. Keep procedural tasks as concise step instructions.
+- Use a verifiable target that does not assume fixed values in randomly generated rows.
 - Use Indonesian Excel regional notation in the formula and any formula shown in the hint: use semicolons (\`;\`) between function arguments and commas (\`,\`) for decimal values. Keep English function names and do not change commas inside quoted text.
 - Follow Formula Reference Style: Classic uses only cell/range references, not table column names. Modern uses structured references with the actual table/header names; follow the @ setting above for current-row versus whole-column references.
 
@@ -190,6 +201,8 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
   const roleProfile = ROLE_PROFILES[req.role];
   const roleOption = ADMIN_ROLES.find((item) => item.id === req.role);
   const industryProfile = INDUSTRY_PROFILES[industry];
+  const formulaPolicy = LEVEL_CONFIG[req.level];
+  const versionForbiddenFormulas = req.excelVersion === '2016/2019' ? M365_ONLY_FORMULAS : [];
 
   const replacements: Record<string, string> = {
     '{{level}}': req.level,
@@ -201,6 +214,7 @@ export function compileGeneratePrompt(req: GenerateRequest, seed: string): strin
         : req.role,
     '{{industry}}': industry,
     '{{industryProfile}}': `${industryProfile.focus}. Contoh komoditas/produk/layanan yang sesuai: ${industryProfile.products.join(', ')}. Kategori yang sesuai: ${industryProfile.categories.join(', ')}. Gunakan hanya yang relevan.`,
+    '{{levelFormulaPolicy}}': `Direkomendasikan: ${formulaPolicy.recommended.join(', ')}. Dilarang: ${Array.from(new Set([...formulaPolicy.forbidden, ...versionForbiddenFormulas])).join(', ')}.`,
     '{{excelVersion}}': req.excelVersion,
     '{{formulaStyle}}': req.formulaStyle === 'modern' ? 'Modern (structured references)' : 'Classic (cell/range references)',
     '{{structuredReferenceAt}}': req.structuredReferenceAt === false
@@ -238,7 +252,7 @@ export function resolveTaskCount(
 
 export function compileRegenerateTaskPrompt(params: {
   title: string;
-  level: string;
+  level: Level;
   role: string;
   industry?: string;
   scenario: string;
@@ -260,6 +274,12 @@ export function compileRegenerateTaskPrompt(params: {
     '{{role}}': roleProfile?.label ?? params.role,
     '{{roleDetails}}': roleProfile ? `${roleProfile.label}: ${roleProfile.description}` : params.role,
     '{{industry}}': params.industry ?? 'Tidak ditentukan',
+    '{{levelFormulaPolicy}}': (() => {
+      const policy = LEVEL_CONFIG[params.level];
+      const versionForbiddenFormulas = params.excelVersion === '2016/2019' ? M365_ONLY_FORMULAS : [];
+      const forbidden = Array.from(new Set([...policy.forbidden, ...versionForbiddenFormulas]));
+      return `Direkomendasikan: ${policy.recommended.join(', ')}. Dilarang: ${forbidden.join(', ')}.`;
+    })(),
     '{{scenario}}': params.scenario,
     '{{excelVersion}}': params.excelVersion,
     '{{formulaStyle}}': params.formulaStyle ?? 'Classic (cell/range references)',

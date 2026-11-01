@@ -152,7 +152,8 @@ function injectDataTraps(rows: DataRow[], columns: DatasetColumn[], seed: number
 
   // 1. Spasi berlebih pada text columns
   if (textCols.length > 0) {
-    const colName = textCols[0].name;
+    const codeColumn = textCols.find((column) => /(kode|code|sku)/i.test(column.name));
+    const colName = (codeColumn ?? textCols[0]).name;
     const targets = [5, 12, 28, 45];
     for (const idx of targets) {
       if (rows[idx] && rows[idx][colName]) {

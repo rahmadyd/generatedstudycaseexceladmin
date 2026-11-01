@@ -99,8 +99,43 @@ export function analyzeFormula(rawFormula: string): FormulaBreakdown {
     return endIdx !== -1 ? formula.substring(openParen + 1, endIdx) : '';
   };
 
+  // --- 0. AVERAGE(IF(...)) -> Criteria-aware array average ---
+  if (/\bAVERAGE\s*\(\s*IF\s*\(/.test(formulaUpper)) {
+    reason =
+      'Menggunakan AVERAGE(IF(...)) agar hanya nilai pada baris yang memenuhi kriteria yang masuk ke rata-rata. Berbeda dari AVERAGE biasa, syarat tetap diterapkan tanpa mengandalkan filter lembar kerja.';
+    pattern = '=AVERAGE( IF( rentang_kriteria = kriteria ; rentang_nilai ; "" ) )';
+    patternDescription =
+      'IF menghasilkan angka hanya untuk baris yang cocok dan teks kosong untuk baris lain. AVERAGE mengabaikan teks kosong, sehingga rata-rata hanya mencakup baris yang memenuhi syarat.';
+
+    const rawArgs = extractArguments(getInner('IF'));
+    if (rawArgs.length > 0) {
+      conditions.push({
+        param: 'kondisi (logical_test)',
+        actualValue: rawArgs[0],
+        role: 'Kriteria yang Diuji',
+        explanation: `Excel mengecek kondisi ${rawArgs[0]} untuk setiap baris.`,
+      });
+    }
+    if (rawArgs.length > 1) {
+      conditions.push({
+        param: 'nilai_jika_benar (value_if_true)',
+        actualValue: rawArgs[1],
+        role: 'Nilai untuk Baris yang Cocok',
+        explanation: `Jika kondisi terpenuhi, nilai ${rawArgs[1]} disertakan dalam rata-rata.`,
+      });
+    }
+    if (rawArgs.length > 2) {
+      conditions.push({
+        param: 'nilai_jika_salah (value_if_false)',
+        actualValue: rawArgs[2],
+        role: 'Nilai untuk Baris yang Tidak Cocok',
+        explanation: `Jika kondisi tidak terpenuhi, ${rawArgs[2]} menghasilkan teks kosong yang diabaikan oleh AVERAGE.`,
+      });
+    }
+  }
+
   // --- 0. SUM(IF(...; 1; 0)) -> Array Counter Pattern ---
-  if (formulaUpper.includes('SUM(IF(') || /SUM\s*\(\s*IF\s*\(/.test(formulaUpper)) {
+  else if (formulaUpper.includes('SUM(IF(') || /SUM\s*\(\s*IF\s*\(/.test(formulaUpper)) {
     reason =
       'Menggunakan teknik Array Counter (kombinasi SUM + IF) untuk menghitung banyaknya baris yang memenuhi syarat tertentu dengan mengubah hasil logika (TRUE/FALSE) menjadi angka 1 dan 0.';
     pattern = '=SUM( IF( kondisi_syarat ; 1 ; 0 ) )';
@@ -422,7 +457,7 @@ export function analyzeFormula(rawFormula: string): FormulaBreakdown {
   }
 
   // --- 8. IF ---
-  else if (formulaUpper.includes('IF(') || formulaUpper.startsWith('=IF(')) {
+  else if (/\bIF\s*\(/.test(formulaUpper)) {
     reason =
       'Menggunakan fungsi logika IF untuk menguji suatu kondisi: menghasilkan nilai A jika syarat terpenuhi (True), atau nilai B jika syarat tidak terpenuhi (False).';
     pattern = '=IF( kondisi_logika_uji ; nilai_jika_kondisi_benar ; [nilai_jika_kondisi_salah] )';
@@ -456,7 +491,26 @@ export function analyzeFormula(rawFormula: string): FormulaBreakdown {
     }
   }
 
-  // --- 9. Basic SUM (Tanpa Syarat) ---
+  // --- 9. HSTACK (Rangkaian Hasil Horizontal) ---
+  else if (formulaUpper.includes('HSTACK(')) {
+    reason =
+      'Menggunakan HSTACK untuk menampilkan beberapa hasil KPI secara berdampingan dalam satu rumus dinamis.';
+    pattern = '=HSTACK( hasil_1 ; hasil_2 ; ... )';
+    patternDescription =
+      'Setiap argumen menjadi satu kolom hasil pada baris yang sama. Fungsi ini tersedia pada Microsoft 365.';
+
+    const rawArgs = extractArguments(getInner('HSTACK'));
+    rawArgs.forEach((argument, index) => {
+      conditions.push({
+        param: `hasil_${index + 1}`,
+        actualValue: argument,
+        role: `Hasil Kolom ${index + 1}`,
+        explanation: `Nilai atau label dari argumen ${index + 1} akan ditampilkan pada kolom hasil ke-${index + 1}.`,
+      });
+    });
+  }
+
+  // --- 10. Basic SUM (Tanpa Syarat) ---
   else if (formulaUpper.includes('SUM(') && !formulaUpper.includes('SUMIF') && !formulaUpper.includes('SUMPRODUCT')) {
     reason = 'Menggunakan fungsi SUM untuk menjumlahkan sekumpulan angka pada suatu rentang kolom secara menyeluruh dan efisien.';
     pattern = '=SUM( rentang_awal:rentang_akhir )';
@@ -473,7 +527,75 @@ export function analyzeFormula(rawFormula: string): FormulaBreakdown {
     }
   }
 
-  // --- 10. AVERAGE ---
+  // --- 10. AVERAGEIFS ---
+  else if (formulaUpper.includes('AVERAGEIFS')) {
+    reason =
+      'Menggunakan AVERAGEIFS karena nilai rata-rata harus dihitung hanya untuk baris yang memenuhi beberapa kriteria sekaligus.';
+    pattern = '=AVERAGEIFS( rentang_rata_rata ; rentang_kriteria_1 ; kriteria_1 ; [rentang_kriteria_2 ; kriteria_2] ; ... )';
+    patternDescription =
+      'Excel mencocokkan setiap kriteria pada baris yang sama, lalu merata-ratakan nilai dari rentang pertama hanya untuk baris yang memenuhi seluruh kriteria.';
+
+    const rawArgs = extractArguments(getInner('AVERAGEIFS'));
+    if (rawArgs.length > 0) {
+      conditions.push({
+        param: 'rentang_rata_rata (average_range)',
+        actualValue: rawArgs[0],
+        role: 'Angka yang Dirata-ratakan',
+        explanation: `Nilai angka dari rentang ${rawArgs[0]} yang dihitung rata-ratanya setelah semua syarat terpenuhi.`,
+      });
+    }
+    for (let index = 1; index + 1 < rawArgs.length; index += 2) {
+      conditions.push({
+        param: `rentang_kriteria_${(index + 1) / 2}`,
+        actualValue: rawArgs[index],
+        role: `Kolom Pengecekan Kriteria ${(index + 1) / 2}`,
+        explanation: `Excel memeriksa ${rawArgs[index]} terhadap kriteria ${rawArgs[index + 1]}.`,
+      });
+      conditions.push({
+        param: `kriteria_${(index + 1) / 2}`,
+        actualValue: rawArgs[index + 1],
+        role: `Kriteria ${(index + 1) / 2}`,
+        explanation: `Baris hanya disertakan jika nilainya cocok dengan ${rawArgs[index + 1]}.`,
+      });
+    }
+  }
+
+  // --- 11. AVERAGEIF ---
+  else if (formulaUpper.includes('AVERAGEIF')) {
+    reason =
+      'Menggunakan AVERAGEIF agar rata-rata hanya menghitung nilai pada baris yang memenuhi satu kriteria. Fungsi ini tetap membatasi data meskipun baris tidak difilter secara manual.';
+    pattern = '=AVERAGEIF( rentang_kriteria ; kriteria ; [rentang_rata_rata] )';
+    patternDescription =
+      'Excel memeriksa kriteria pada rentang pertama, lalu menghitung rata-rata nilai yang sebaris pada rentang ketiga. Jika rentang ketiga dihilangkan, rentang kriteria itu sendiri yang dirata-ratakan.';
+
+    const rawArgs = extractArguments(getInner('AVERAGEIF'));
+    if (rawArgs.length > 0) {
+      conditions.push({
+        param: 'rentang_kriteria (range)',
+        actualValue: rawArgs[0],
+        role: 'Kolom Pengecekan Kriteria',
+        explanation: `Excel mencari baris yang cocok pada rentang ${rawArgs[0]}.`,
+      });
+    }
+    if (rawArgs.length > 1) {
+      conditions.push({
+        param: 'kriteria (criteria)',
+        actualValue: rawArgs[1],
+        role: 'Syarat yang Harus Cocok',
+        explanation: `Hanya baris dengan nilai ${rawArgs[1]} yang disertakan dalam rata-rata.`,
+      });
+    }
+    if (rawArgs.length > 2) {
+      conditions.push({
+        param: 'rentang_rata_rata (average_range)',
+        actualValue: rawArgs[2],
+        role: 'Angka yang Dirata-ratakan',
+        explanation: `Nilai angka pada rentang ${rawArgs[2]} dihitung rata-ratanya untuk baris yang lolos kriteria.`,
+      });
+    }
+  }
+
+  // --- 12. AVERAGE ---
   else if (formulaUpper.includes('AVERAGE')) {
     reason = 'Menggunakan fungsi AVERAGE untuk menghitung nilai rata-rata dari data transaksi pada kolom yang ditentukan.';
     pattern = '=AVERAGE( rentang_sel_angka )';

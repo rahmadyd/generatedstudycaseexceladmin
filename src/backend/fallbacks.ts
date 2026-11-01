@@ -16,7 +16,7 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
         no: 1,
         instruction: 'Hitung subtotal pendapatan tiap transaksi (Qty dikali Harga Satuan).',
         hint: 'Gunakan perkalian sel =D2*E2 di kolom Subtotal.',
-        targetResult: 'Total omset keseluruhan berkisar Rp 24.500.000 - Rp 30.000.000.',
+        targetResult: 'Kolom Subtotal terisi nilai Qty dikalikan Harga_Satuan pada setiap baris.',
       },
       {
         no: 2,
@@ -28,13 +28,13 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
         no: 3,
         instruction: 'Hitung Rata-rata Pembelian per Transaksi menggunakan rumus AVERAGE.',
         hint: 'Gunakan formula =AVERAGE(F2:F151).',
-        targetResult: 'Rata-rata berkisar antara Rp 150.000 - Rp 250.000.',
+        targetResult: 'Rata-rata cocok dengan seluruh subtotal transaksi.',
       },
       {
         no: 4,
-        instruction: 'Temukan nilai transaksi terbesar (MAX) dan transaksi terkecil (MIN).',
-        hint: 'Gunakan rumus =MAX(...) dan =MIN(...).',
-        targetResult: 'Transaksi min > Rp 10.000 dan max < Rp 2.500.000.',
+        instruction: 'Temukan nilai transaksi dengan Subtotal terbesar menggunakan fungsi MAX.',
+        hint: 'Gunakan rumus =MAX(F2:F151) pada kolom Subtotal.',
+        targetResult: 'Nilai maksimum sama dengan atau lebih besar dari seluruh nilai Subtotal lainnya.',
       },
       {
         no: 5,
@@ -46,7 +46,7 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
     dataTraps: [],
     formulas: {
       recommended: ['SUM', 'AVERAGE', 'COUNT', 'MIN', 'MAX', 'IF'],
-      allowed: ['COUNTA', 'SUMIF'],
+      allowed: ['COUNTA'],
       forbidden: ['VLOOKUP', 'XLOOKUP', 'INDEX', 'MATCH', 'Pivot Table', 'Macro/VBA'],
     },
     dataset: {
@@ -78,8 +78,8 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       },
       {
         task: 4,
-        formula: '=MAX(F2:F151) dan =MIN(F2:F151)',
-        explanation: 'Fungsi MAX mencari nilai nominal transaksi tertinggi dalam periode tersebut, sedangkan MIN mendeteksi transaksi terkecil untuk memantau sebaran daya beli pelanggan.',
+        formula: '=MAX(F2:F151)',
+        explanation: 'MAX memindai seluruh nilai Subtotal pada F2:F151 dan mengembalikan angka terbesar. Rentang tidak memasukkan header, sehingga teks judul kolom tidak mengganggu hasil.',
       },
       {
         task: 5,
@@ -97,7 +97,7 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
     role: 'Admin Inventory/Gudang',
     excelVersion: 'Microsoft 365',
     scenario:
-      'Sebagai Admin Inventory di CV Cahaya Logistik Nusantara, kamu menerima data mutasi barang gudang selama periode audit. Data hasil ekspor ERP memiliki beberapa ketidaksempurnaan format (spasi ekstra, data tanggal teks). Kamu diminta melakukan lookup master produk, menghitung total barang keluar per kategori secara bersyarat, dan menandai barang yang stoknya di bawah reorder point.',
+      'Sebagai Admin Inventory di CV Cahaya Logistik Nusantara, kamu menerima data mutasi barang gudang selama periode audit. Data hasil ekspor ERP memiliki beberapa ketidaksempurnaan format (spasi ekstra, data tanggal teks). Kamu diminta membersihkan kode barang, merekap kuantitas keluar per kategori dan shift, serta menjaga konsistensi input operasional.',
     tasks: [
       {
         no: 1,
@@ -107,9 +107,9 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       },
       {
         no: 2,
-        instruction: 'Tarik Nama_Barang dan Harga_Satuan dari sheet Master_Barang menggunakan VLOOKUP atau XLOOKUP yang dibungkus IFERROR.',
-        hint: '=IFERROR(VLOOKUP(TRIM(B2); Master_Barang!$A$2:$C$50; 2; FALSE); "Tidak Ditemukan")',
-        targetResult: 'Semua baris terisi nama produk secara akurat.',
+        instruction: 'Atur validasi data pada kolom Shift agar hanya menerima Pagi, Siang, atau Malam.',
+        hint: 'Pilih kolom Shift, lalu Data > Data Validation > List dengan sumber Pagi;Siang;Malam.',
+        targetResult: 'Nilai Shift baru hanya dapat dipilih dari tiga opsi yang tersedia.',
       },
       {
         no: 3,
@@ -119,15 +119,15 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       },
       {
         no: 4,
-        instruction: 'Hitung frekuensi transaksi pengiriman yang terjadi pada shift malam dengan COUNTIFS.',
-        hint: '=COUNTIFS(Shift; "Malam"; Status; "Selesai")',
-        targetResult: 'Jumlah transaksi shift malam selesai.',
+        instruction: 'Hitung jumlah transaksi pengiriman pada shift Malam menggunakan COUNTIF.',
+        hint: '=COUNTIF(F2:F181; "Malam")',
+        targetResult: 'Jumlah baris dengan Shift bernilai Malam tanpa syarat tambahan.',
       },
       {
         no: 5,
-        instruction: 'Ekstrak kode gudang cabang (3 huruf awal dari Nomor PO) menggunakan fungsi LEFT.',
-        hint: '=LEFT(A2, 3)',
-        targetResult: 'Kode cabang seperti GDK, SBY, BDG terekstrak rapi.',
+        instruction: 'Ekstrak tiga karakter awalan dokumen dari Nomor_PO menggunakan fungsi LEFT.',
+        hint: '=LEFT(A2; 3)',
+        targetResult: 'Setiap hasil menampilkan awalan PO- dari Nomor_PO.',
       },
     ],
     dataTraps: [
@@ -136,8 +136,8 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       'Nilai kuantitas pada 3 baris berupa angka dalam format string',
     ],
     formulas: {
-      recommended: ['VLOOKUP', 'XLOOKUP', 'SUMIFS', 'COUNTIFS', 'IFERROR', 'TRIM', 'LEFT'],
-      allowed: ['INDEX', 'MATCH', 'TEXT'],
+      recommended: ['SUMIFS', 'COUNTIF', 'TRIM', 'LEFT', 'Data Validation'],
+      allowed: ['SUMIF', 'COUNTIFS', 'TEXT', 'IFERROR'],
       forbidden: ['Pivot Table', 'Macro/VBA'],
     },
     dataset: {
@@ -160,8 +160,8 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       },
       {
         task: 2,
-        formula: '=IFERROR(VLOOKUP(TRIM(B2); Master_Barang!$A$2:$C$50; 2; 0); "Tidak Ditemukan")',
-        explanation: 'Bedah argumen VLOOKUP: (1) TRIM(B2) adalah kunci pencarian bersih; (2) Master_Barang!$A$2:$C$50 adalah tabel referensi yang dikunci tanda $ agar tidak bergeser saat ditarik ke bawah; (3) Angka 2 adalah nomor kolom data Nama Barang; (4) Angka 0 (FALSE) artinya EXACT MATCH (wajib 0 agar Excel hanya mengambil barang yang kodenya 100% sama persis; jika diisi 1, Excel bisa salah menarik produk lain!). Fungsi IFERROR membungkus rumus agar jika kode belum terdaftar, tampil keterangan ramah "Tidak Ditemukan".',
+        formula: 'Data Validation: Allow = List; Source = Pagi, Siang, Malam',
+        explanation: 'Pilih seluruh sel data pada kolom Shift, buka Data > Data Validation, pilih Allow: List, lalu isi Source dengan Pagi;Siang;Malam. Validasi ini mencegah entri shift di luar tiga pilihan yang disediakan tanpa mengandalkan sheet master yang tidak tersedia pada dataset.',
       },
       {
         task: 3,
@@ -170,13 +170,13 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       },
       {
         task: 4,
-        formula: '=COUNTIFS(F2:F181; "Malam")',
-        explanation: 'Fungsi COUNTIFS menghitung frekuensi kejadian: F2:F181 adalah kolom Shift, dan "Malam" adalah nilai yang dihitung. Sangat berguna bagi admin untuk rekap absensi atau operasional shift tanpa perlu filter manual.',
+        formula: '=COUNTIF(F2:F181; "Malam")',
+        explanation: 'COUNTIF menerima dua argumen: F2:F181 adalah rentang kolom Shift yang diperiksa, sedangkan "Malam" adalah kriteria yang dihitung. Karena tugas hanya memiliki satu syarat, COUNTIF lebih tepat daripada COUNTIFS. Pastikan rentang mencakup semua 180 baris data dan tidak memasukkan header.',
       },
       {
         task: 5,
         formula: '=LEFT(A2; 3)',
-        explanation: 'Fungsi LEFT memotong karakter teks dari sisi paling kiri: A2 adalah sel sumber (Nomor PO), dan angka 3 adalah jumlah karakter yang diambil. Menghasilkan kode cabang (misal "GDK" dari "GDK-2026-0001").',
+        explanation: 'LEFT mengambil sejumlah karakter dari sisi kiri teks. A2 merujuk ke Nomor_PO pada baris aktif, sedangkan 3 mengambil awalan "PO-" dari format nomor yang dibuat dataset. Salin rumus ke bawah untuk menerapkan hasil pada setiap transaksi.',
       },
     ],
   },
@@ -184,48 +184,48 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
     id: 'fallback-advance-keuangan',
     seed: 'seed-adv-keuangan-2026',
     createdAt: new Date().toISOString(),
-    title: 'Rekonsiliasi Kas Operasional & Matriks Budget Variance',
+    title: 'Analisis Pengeluaran Terverifikasi & Klasifikasi Risiko',
     level: 'advance',
     role: 'Admin Keuangan/Kasir',
     excelVersion: 'Microsoft 365',
     scenario:
-      'Sebagai Senior Admin Keuangan di PT Mega Prima Medika, Anda bertugas menyusun matriks variance anggaran operasional Q1 2026. Anda harus menghubungkan data transaksi pengeluaran aktual dengan plafon anggaran multi-departemen tanpa menggunakan hardcoding, membuat aturan Conditional Formatting otomatis untuk mendeteksi pembengkakan biaya, serta menyajikan rekap Pivot Table.',
+      'Sebagai Senior Admin Keuangan di PT Mega Prima Medika, Anda bertugas menganalisis transaksi pengeluaran Q1 2026. Anda perlu menemukan transaksi terverifikasi dengan kriteria departemen dan status, menghitung total realisasi, mengklasifikasikan nilai transaksi untuk prioritas audit, menandai transaksi berisiko dengan Conditional Formatting, serta menyajikan rekap Pivot Table.',
     tasks: [
       {
         no: 1,
-        instruction: 'Tarik plafon anggaran berdasarkan kombinasi Kode Departemen dan Akun Pengeluaran menggunakan formula INDEX-MATCH 2 arah atau INDEX(...; MATCH(1; (range1=crit1)*(range2=crit2); 0)).',
-        hint: 'Gunakan INDEX dengan MATCH array multi-kriteria.',
-        targetResult: 'Plafon anggaran terhubung otomatis sesuai sheet Budget_Master.',
+        instruction: 'Temukan nilai Nominal untuk transaksi pertama berstatus Approved pada departemen Keuangan menggunakan INDEX-MATCH dua kriteria.',
+        hint: '=INDEX($E$2:$E$201; MATCH(1; ($C$2:$C$201="Keuangan")*($F$2:$F$201="Approved"); 0))',
+        targetResult: 'Satu nilai Nominal dari baris pertama yang memenuhi kedua kriteria.',
       },
       {
         no: 2,
         instruction: 'Hitung total realisasi belanja departemen Keuangan dengan metode SUMPRODUCT berbobot status verifikasi.',
-        hint: '=SUMPRODUCT((Departemen="Keuangan")*(Status="Approved")*(Nominal))',
+        hint: '=SUMPRODUCT((C2:C201="Keuangan")*(F2:F201="Approved")*(E2:E201))',
         targetResult: 'Total realisasi belanja yang telah terverifikasi.',
       },
       {
         no: 3,
-        instruction: 'Hitung selisih Variance (Anggaran - Realisasi) dan tentukan status efisiensi dengan formula IFS: Jika Variance < 0 "Over Budget", Jika Variance = 0 "On Track", Jika Variance > 0 "Surplus".',
-        hint: '=IFS(Variance<0; "Over Budget"; Variance=0; "On Track"; Variance>0; "Surplus")',
-        targetResult: 'Status anggaran terisi otomatis.',
+        instruction: 'Klasifikasikan transaksi: Nominal minimal Rp10.000.000 berstatus "Butuh Audit", minimal Rp5.000.000 berstatus "Perlu Review", dan di bawahnya "Normal".',
+        hint: '=IFS(E2>=10000000; "Butuh Audit"; E2>=5000000; "Perlu Review"; TRUE; "Normal")',
+        targetResult: 'Setiap transaksi mendapatkan tepat satu status sesuai ambang Nominal.',
       },
       {
         no: 4,
-        instruction: 'Terapkan aturan Conditional Formatting dengan rumus untuk menyorot seluruh baris transaksi yang statusnya "Over Budget" dengan highlight merah muda terang.',
-        hint: 'Aturan rumus: =$H2="Over Budget", terapkan ke =$A$2:$H$200.',
-        targetResult: 'Baris defisit tersorot dinamis saat data berubah.',
+        instruction: 'Terapkan Conditional Formatting untuk menyorot baris transaksi berstatus "Butuh Audit" pada kolom hasil G.',
+        hint: 'Aturan rumus: =$G2="Butuh Audit", terapkan ke =$A$2:$G$201.',
+        targetResult: 'Seluruh baris dengan status Butuh Audit tersorot dan baris lain tidak.',
       },
       {
         no: 5,
-        instruction: 'Susun Pivot Table dinamis yang mengelompokkan realisasi belanja per kuartal dan departemen, dilengkapi Slicer filter Status Verifikasi.',
-        hint: 'Insert Pivot Table -> Rows: Departemen, Columns: Bulan, Values: Sum of Nominal.',
-        targetResult: 'Tabel pivot interaktif siap presentasi manajemen.',
+        instruction: 'Susun Pivot Table dinamis yang mengelompokkan realisasi belanja per kuartal dan departemen, dilengkapi Slicer filter Status.',
+        hint: 'Insert Pivot Table -> Rows: Departemen, Columns: Tanggal (group by Quarters), Values: Sum of Nominal, Slicer: Status.',
+        targetResult: 'Tabel pivot menampilkan total Nominal per Departemen dan kuartal, dengan filter Status.',
       },
     ],
     dataTraps: [
-      'Sel kosong pada tanggal persetujuan kasir (belum diverifikasi)',
-      'Nama departemen dengan variasi kapitalisasi (contoh: "HRD" vs "hrd ")',
-      'Format angka nominal transaksi diselingi separator desimal campuran',
+      'Spasi berlebih pada beberapa Voucher_ID',
+      'Tanggal kirim bervariasi sebagai teks dengan pemisah garis miring',
+      'Beberapa Nominal tersimpan sebagai teks dan terdapat dua baris duplikat',
     ],
     formulas: {
       recommended: ['INDEX-MATCH', 'SUMPRODUCT', 'IFS', 'Pivot Table', 'Conditional Formatting Rumus', 'Named Range'],
@@ -245,10 +245,10 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       ],
     },
     answerKey: [
-      { task: 1, formula: '=INDEX(Budget_Master!$C$2:$C$20, MATCH(1, (Budget_Master!$A$2:$A$20=C2)*(Budget_Master!$B$2:$B$20=D2), 0))', explanation: 'Pencarian dua kriteria baris dan kolom tanpa kolom pembantu.' },
+      { task: 1, formula: '=INDEX($E$2:$E$201; MATCH(1; ($C$2:$C$201="Keuangan")*($F$2:$F$201="Approved"); 0))', explanation: 'INDEX mengembalikan nilai dari rentang Nominal E2:E201. MATCH mencari angka 1 pada hasil perkalian dua pemeriksaan logika: Departemen harus Keuangan dan Status harus Approved. Nilai 0 pada MATCH meminta pencocokan tepat, sehingga baris dengan hanya satu syarat cocok tidak akan terpilih. Di Excel 2016/2019, rumus array ini perlu dikonfirmasi dengan Ctrl+Shift+Enter.' },
       { task: 2, formula: '=SUMPRODUCT((C2:C201="Keuangan")*(F2:F201="Approved")*(E2:E201))', explanation: 'Kalkulasi cepat perkalian array logika dengan array nominal.' },
-      { task: 3, formula: '=IFS(G2<0, "Over Budget", G2=0, "On Track", G2>0, "Surplus")', explanation: 'Evaluasi kondisi bertingkat secara ringkas.' },
-      { task: 4, formula: 'Formula Rule: =$H2="Over Budget" pada range =$A$2:$H$201', explanation: 'Kuncian tanda dollar kolom $H memastikan seluruh baris terwarnai seragam.' },
+      { task: 3, formula: '=IFS(E2>=10000000; "Butuh Audit"; E2>=5000000; "Perlu Review"; TRUE; "Normal")', explanation: 'IFS mengevaluasi pasangan kondisi dan hasil dari kiri ke kanan. E2 adalah Nominal pada baris aktif; ambang tertinggi diperiksa lebih dahulu agar transaksi besar tidak lebih dulu masuk ke kategori yang lebih rendah. TRUE menjadi kondisi terakhir agar semua nilai lain berstatus Normal.' },
+      { task: 4, formula: 'Formula Rule: =$G2="Butuh Audit" pada range =$A$2:$G$201', explanation: 'Conditional Formatting memeriksa kolom status G pada setiap baris. Tanda $ pada G mengunci kolom status, sedangkan nomor baris tetap relatif agar aturan mengikuti baris yang sedang diwarnai.' },
       { task: 5, formula: 'Pivot Table: Departemen di Rows, Bulan di Columns, Sum(Nominal) di Values + Slicer Status', explanation: 'Ringkasan multi-dimensi untuk pelaporan finansial eksekutif.' },
     ],
   },
@@ -260,8 +260,9 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
     level: 'portfolio',
     role: 'Admin Keuangan/Kasir',
     excelVersion: 'Microsoft 365',
+    industry: 'Distribusi dan perdagangan',
     scenario:
-      'Direktur Operasional PT Sukses Makmur Abadi meminta kamu merancang sistem reporting Excel tingkat korporat yang siap dijadikan bukti keahlian tingkat lanjut (portofolio kerja). Proyek ini menuntut pembersihan data mentah ekspor, pemodelan tabel relasional antar-sheet, pembuatan KPI metrics otomatis, interactive slicers, dan dokumentasi README berstandar konsultan.',
+      'Direktur Operasional PT Sukses Makmur Abadi, perusahaan distribusi nasional, meminta kamu merancang sistem reporting Excel tingkat korporat yang siap dijadikan bukti keahlian tingkat lanjut (portofolio kerja). Proyek ini menuntut pembersihan data mentah ekspor, pemodelan tabel relasional antar-sheet, pembuatan KPI metrics otomatis, interactive slicers, dan dokumentasi README berstandar konsultan.',
     tasks: [
       {
         no: 1,
@@ -271,19 +272,19 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       },
       {
         no: 2,
-        instruction: 'Bangun pipa pembersihan data (Data Cleansing) untuk menangani tanggal teks, trailing spaces, dan duplicate entry.',
-        hint: 'Kombinasikan TRIM, DATEVALUE, dan fungsi UNIQUE.',
-        targetResult: 'Sheet data bersih bebas duplikasi dan kesalahan formatting.',
+        instruction: 'Bersihkan spasi berlebih pada Invoice_No di kolom bantu, lalu hapus baris transaksi duplikat.',
+        hint: 'Gunakan =TRIM(A2) pada kolom bantu, salin ke bawah, lalu pilih Data > Remove Duplicates pada data yang sudah dibersihkan.',
+        targetResult: 'Invoice_No bersih dari spasi tepi dan setiap transaksi duplikat ditinjau sebelum dihapus.',
       },
       {
         no: 3,
-        instruction: 'Hitung KPI Utama: Total Revenue Q1, Gross Profit Margin, Rata-rata Days to Pay, dan Persentase Klaim Tertagih.',
-        hint: 'Gunakan dynamic named ranges dan formula analitis.',
-        targetResult: '4 kartu skor (scorecards) KPI dengan indikator arah pertumbuhan.',
+        instruction: 'Hitung dua KPI: Total Revenue Q1 dan Gross Profit Margin dari Nilai_Bruto serta Biaya_Operasional.',
+        hint: 'Total Revenue = SUM kolom Nilai_Bruto. Gross Profit Margin = (Total Nilai_Bruto - Total Biaya_Operasional) / Total Nilai_Bruto.',
+        targetResult: 'Dua KPI tampil: total pendapatan dan margin dalam format persentase.',
       },
       {
         no: 4,
-        instruction: 'Buat Interactive Executive Dashboard dengan 2 Pivot Charts, 1 Dynamic Table, dan 3 Slicers terhubung (Tahun, Wilayah, Kategori).',
+        instruction: 'Buat Interactive Executive Dashboard dengan 2 Pivot Charts, 1 Dynamic Table, dan 3 Slicers terhubung (Wilayah, Kategori_Layanan, Status_Bayar).',
         hint: 'Hubungkan Slicer ke beberapa pivot table via Report Connections.',
         targetResult: 'Dashboard merespon interaktif saat slicer diklik.',
       },
@@ -295,9 +296,9 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       },
     ],
     dataTraps: [
-      'Data transaksi terduplikasi sebanyak 5 baris',
-      'Format angka Rp dengan tanda titik dan koma yang tertukar pada file CSV',
-      'Nilai status transaksi tidak seragam (contoh: "LUNAS", "Lunas ", "lunas")',
+      'Spasi berlebih pada beberapa Invoice_No',
+      'Tanggal pada beberapa baris tersimpan sebagai teks dengan pemisah garis miring',
+      'Beberapa Nilai_Bruto tersimpan sebagai teks dan terdapat dua baris duplikat',
     ],
     formulas: {
       recommended: ['Multi-sheet modeling', 'Interactive Dashboard (Pivot + Slicer + Chart)', 'Dynamic Formulas', 'Data Cleansing Pipeline'],
@@ -318,14 +319,14 @@ export const FALLBACK_CASES: Record<Level, CaseStudy> = {
       ],
     },
     answerKey: [
-      { task: 1, formula: 'Hyperlink Sheet Formula: =HYPERLINK("#\'04_EXECUTIVE_DASHBOARD\'!A1", "Go to Dashboard")', explanation: 'Membangun arsitektur navigasi profesional antar sheet kerja.' },
-      { task: 2, formula: '=TRIM(CLEAN(SUBSTITUTE(A2, CHAR(160), " ")))', explanation: 'Formula data cleansing standar enterprise untuk membersihkan karakter non-breaking.' },
-      { task: 3, formula: '=SUM(E2:E251) dan =SUM(E2:E251-F2:F251)/SUM(E2:E251)', explanation: 'Menghitung total pendapatan dan persentase Gross Profit Margin.' },
+      { task: 1, formula: '=HYPERLINK("#\'04_EXECUTIVE_DASHBOARD\'!A1"; "Buka Dashboard")', explanation: 'Buat empat sheet sesuai nama yang diminta, susun urutan kerja, lalu gunakan HYPERLINK untuk membuat tautan navigasi menuju dashboard.' },
+      { task: 2, formula: '=TRIM(A2)', explanation: 'TRIM menghapus spasi berlebih di awal dan akhir Invoice_No pada A2. Salin ke bawah ke kolom bantu, gunakan hasil bersih sebagai dasar pemeriksaan, lalu pilih Data > Remove Duplicates untuk menghapus transaksi yang benar-benar duplikat.' },
+      { task: 3, formula: '=HSTACK("Total Revenue Q1"; SUM(E2:E251); "Gross Profit Margin"; (SUM(E2:E251)-SUM(F2:F251))/SUM(E2:E251))', explanation: 'HSTACK menyusun empat hasil secara horizontal: label Total Revenue Q1, SUM(E2:E251) sebagai total Nilai_Bruto, label Gross Profit Margin, dan rasio (total Nilai_Bruto dikurangi total Biaya_Operasional) dibagi total Nilai_Bruto. Hasilnya spill ke empat sel; format nilai margin sebagai persentase dan pastikan total pendapatan tidak nol.' },
       { task: 4, formula: 'Pivot Table Slicer Connection Settings -> Check all Pivot Tables in Report Connections', explanation: 'Menghubungkan satu filter slicer ke seluruh visualisasi dashboard secara simultan.' },
       { task: 5, formula: 'Markdown/README documentation cell standard', explanation: 'Dokumentasi struktural portofolio untuk presentasi klien atau hiring manager.' },
     ],
     rubric: [
-      'Ketepatan Hasil: Seluruh perhitungan kalkulasi omset, margin, dan rekonsiliasi 100% akurat tanpa error formula.',
+      'Ketepatan Hasil: Total pendapatan dan Gross Profit Margin dihitung dari kolom sumber yang tepat tanpa error formula.',
       'Kerapian Format: Palet warna korporat yang konsisten, format ribuan/rupiah jelas, gridline bersih, dan penataan visual hierarchy.',
       'Integritas Data: Semua data trap (duplikat, spasi tersembunyi, inkonsistensi teks) berhasil dibersihkan di pipeline data.',
       'Kejelasan Dokumentasi: Lembar README menyertakan kamus data, panduan pemeliharaan rumus, dan riwayat revisi.',

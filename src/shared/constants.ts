@@ -57,7 +57,7 @@ export const LEVEL_CONFIG: Record<
     badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800',
     description: 'Fokus pada rumus dasar, kalkulasi total, rata-rata, logika sederhana, dan formatting.',
     recommended: ['SUM', 'AVERAGE', 'COUNT', 'MIN', 'MAX', 'IF', 'SORT', 'FILTER (Tabel)'],
-    forbidden: ['VLOOKUP', 'XLOOKUP', 'INDEX', 'MATCH', 'Pivot Table', 'SUMIFS', 'Macro/VBA'],
+    forbidden: ['VLOOKUP', 'XLOOKUP', 'INDEX', 'MATCH', 'SUMIF', 'SUMIFS', 'COUNTIF', 'COUNTIFS', 'AVERAGEIF', 'AVERAGEIFS', 'SUBTOTAL', 'Pivot Table', 'Macro/VBA'],
   },
   middle: {
     label: 'Middle',
@@ -82,7 +82,7 @@ export const LEVEL_CONFIG: Record<
   },
 };
 
-export const M365_ONLY_FORMULAS = ['XLOOKUP', 'FILTER', 'UNIQUE', 'SORTBY', 'LET', 'LAMBDA', 'XMATCH', 'SEQUENCE'];
+export const M365_ONLY_FORMULAS = ['XLOOKUP', 'FILTER', 'UNIQUE', 'SORTBY', 'LET', 'LAMBDA', 'XMATCH', 'SEQUENCE', 'HSTACK'];
 
 export const SAMPLE_INDUSTRIES = INDUSTRY_OPTIONS;
 

@@ -10,6 +10,7 @@ Parameters:
 - Structured Reference @ setting: {{structuredReferenceAt}}
 - Industry/Company context: {{companyName}} (Industry: {{industry}}, Theme: {{theme}}, Target Period: {{period}})
 - Industry-specific business and dataset guidance: {{industryProfile}}
+- Formula policy for this level: {{levelFormulaPolicy}}
 - Task Count: {{taskCount}}
 - Language: Indonesian
 - Random Seed: {{seed}}
@@ -17,6 +18,7 @@ Parameters:
 ### Level Guidelines:
 1. **easy**:
    - Formulas: SUM, AVERAGE, COUNT, MIN, MAX, IF, basic number and date formatting, sort, filter.
+   - If a task asks for an aggregate for only some rows, do not claim that filtering the sheet makes AVERAGE/SUM/COUNT ignore hidden rows. When conditional aggregate functions are forbidden, use the allowed basic functions in one array formula, such as `=AVERAGE(IF(criteria_range=criteria; average_range; ""))`. Explain that Microsoft 365 accepts it normally and Excel 2016/2019 requires Ctrl+Shift+Enter.
    - Forbidden: VLOOKUP, XLOOKUP, INDEX, MATCH, Pivot Table, Macro/VBA.
 2. **middle**:
    - Formulas: VLOOKUP (or XLOOKUP if Microsoft 365), SUMIF, SUMIFS, COUNTIF, COUNTIFS, IFERROR, TEXT, LEFT, RIGHT, MID, Data Validation.
@@ -35,6 +37,10 @@ Parameters:
 - Do NOT make fake download links! The dataset schema will be used by our code generator to create the real XLSX/CSV file.
 - Provide a clear, realistic Indonesian administrative scenario.
 - In `answerKey`, each formula MUST NOT use any formulas listed under `forbidden`.
+- Treat each task, hint, target, and answer as one contract: the answer formula must perform every filter/condition stated by the task, use the matching dataset columns, and produce the requested measure. Do not merely describe a manual filter before applying an unfiltered AVERAGE/SUM/COUNT; those functions still include filtered-out rows.
+- Before returning JSON, verify each formula-based task against its answer: every required criterion and referenced data column is present in the single formula, every task number has exactly one matching answer, and no answer uses a forbidden or unsupported formula.
+- For formula-based tasks, `answerKey.formula` must be one copyable Excel formula, not prose or a sequence of formulas. Keep procedural tasks (Pivot Table, Data Validation, documentation) as concise step instructions instead.
+- Never invent a fixed numeric `targetResult` for rows that the application generates randomly. Use a verifiable outcome such as the expected output type, status, or a result the learner can compare after calculating it.
 - In `answerKey`, the `explanation` MUST be a thorough educational explanation:
   1) Alasan mengapa rumus/fungsi ini yang paling tepat digunakan untuk kasus tersebut.
   2) Bedah setiap argumen/kondisi rumus secara gamblang (misal pada SUMIFS: sebutkan rentang mana yang dijumlahkan, rentang mana tempat mengecek syarat, dan syarat/kondisi apa yang harus cocok; pada IF: kondisi apa yang diuji, apa hasil jika kondisi benar, apa hasil jika kondisi salah).
@@ -49,6 +55,7 @@ Parameters:
   - `instruction`: clear administrative assignment
   - `hint`: clue on which columns/logic to use
   - `targetResult`: benchmark/target figure or validation outcome that the user can verify without peeking at the answer key.
+- Every hint must name the same column(s), filter criteria, and calculation as its instruction and answer. For array formulas, identify the criteria range and value range and mention the required legacy array entry when applicable.
 - `dataset` must have:
   - `sheetName`: string
   - `rows`: number (100 to 300)
