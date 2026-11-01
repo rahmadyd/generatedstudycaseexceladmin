@@ -57,6 +57,7 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
    - Model default `openai/gpt-oss-120b`; model utama dan cadangan dapat diatur melalui `GROQ_MODEL` dan `GROQ_FALLBACK_MODEL`.
    - Jumlah tugas dibatasi sesuai level agar respons lebih ringkas: Easy 3–4, Middle 4–5, Advance 4–5.
    - Generate Advance dan Portfolio dipisah menjadi beberapa tahap. Jika tahap kunci/brief/rubrik gagal, kasus yang sudah berhasil dibuat tetap dapat digunakan dan bagian yang belum lengkap bisa dicoba ulang.
+   - Jika Groq mengembalikan 429 saat membuat kasus, aplikasi memakai bank kasus statis hanya untuk kombinasi level, role, industri, gaya rumus, dan jumlah tugas yang tersedia. Kasus cadangan ditandai di header; jika tidak ada kombinasi yang cocok, aplikasi tetap menampilkan error 429. Bank saat ini hanya mencakup role Keuangan/Kasir pada industri Akuntansi dan keuangan, dengan gaya rumus classic dan jumlah tugas terbatas.
 
 ---
 
@@ -76,7 +77,9 @@ generatedstudycaseexceladmin/
 │   │   ├── validator.ts             # Validasi Zod & verifikasi aturan rumus forbidden
 │   │   ├── rate-limit.ts            # Rate limiter berbasis IP memory
 │   │   ├── task-service.ts          # Layanan orkestrasi studi kasus & regenerasi tugas
-│   │   └── fallbacks.ts             # Template offline fallback untuk semua level
+│   │   ├── fallbacks.ts             # Template offline fallback untuk semua level
+│   │   ├── case-bank.ts             # Pemilihan kasus statis tervalidasi saat Groq 429
+│   │   └── case-bank.json           # Bank kasus cadangan yang tersedia
 │   │
 │   ├── frontend/                    # FRONTEND (UI Components, Hooks, Client Utilities)
 │   │   ├── components/              # Komponen antarmuka pengguna

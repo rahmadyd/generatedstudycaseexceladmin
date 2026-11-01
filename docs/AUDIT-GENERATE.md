@@ -55,3 +55,10 @@ Jangan menambahkan API key, header Authorization, atau isi prompt ke log.
 - Untuk retry manual, jika tahap berikutnya gagal setelah tahap sebelumnya berhasil, response error tetap menyertakan kasus parsial. Frontend menyimpan hasil parsial itu sebelum menampilkan countdown/error.
 - Kunci jawaban yang belum tersedia tidak dianggap sebagai ketidakselarasan fatal saat memuat riwayat; kunci yang sudah ada tetap divalidasi. PDF kunci menampilkan teks penanda pada baris yang belum memiliki kunci.
 - Pipeline bertahap menambah jumlah panggilan normal untuk Advance/Portfolio dibanding Easy/Middle. Setiap tahap tetap memiliki batas token sendiri dan fallback 429 paling banyak satu percobaan ke model berbeda.
+
+## Bank kasus cadangan fase 4
+
+- Jika generate kasus mendapat 429 dari Groq, `POST /api/generate` mencoba mengambil kasus dari `src/backend/case-bank.json`. Limit internal aplikasi tidak memicu fallback ini.
+- Kasus bank melewati validasi schema dan validasi keselarasan rumus yang sama sebelum dikembalikan. UI menandainya sebagai “Kasus cadangan (bank statis)”.
+- Bank yang tersedia terbatas pada Keuangan/Kasir, industri Akuntansi dan keuangan, gaya rumus classic, serta Easy 3–4 tugas, Middle 4–5, Advance 4–5, dan Portfolio 5–6. Excel 2016/2019 dan Microsoft 365 didukung.
+- Untuk kombinasi lain, endpoint mengembalikan error 429 seperti biasa. Bank statis bukan pengganti umum untuk generate AI dan tidak menurunkan batas kuota Groq.

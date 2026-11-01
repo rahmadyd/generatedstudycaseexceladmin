@@ -93,11 +93,13 @@ export type PortfolioBrief = z.infer<typeof PortfolioBriefSchema>;
 
 export const AnswerKeyStatusEnum = z.enum(['pending', 'available']);
 export const PortfolioStatusEnum = z.enum(['pending', 'available']);
+export const CaseStudySourceEnum = z.enum(['ai', 'bank']);
 
 export const CaseStudySchema = z.object({
   id: z.string().optional(),
   seed: z.string(),
   createdAt: z.string().optional(),
+  source: CaseStudySourceEnum.optional(),
   title: z.string().min(3),
   level: LevelEnum,
   role: z.string().min(2),
