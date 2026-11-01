@@ -26,6 +26,7 @@ CRITICAL RULES:
 - "answerKey": { "task": {{taskNo}}, "formula": "=...", "explanation": "..." }
 - In "answerKey", "explanation" MUST be detailed: jelaskan alasan pemilihan rumus, bedah fungsi tiap argumen, dan terangkan mengapa parameter penting digunakan (misal: kenapa harus 0/FALSE untuk exact match, kenapa ada tanda $ untuk kunci rentang).
 - The formula MUST NOT use any formulas in forbidden list: {{forbiddenFormulas}}!
+- Apply every categorical criterion stated in the task. The standard case has one generated source-data sheet; do not reference a master/lookup table or another source sheet that is not included in the available dataset columns. `KUNCI_JAWABAN` is documentation, not a source table.
 - The new instruction, hint, target, and answer must describe the same operation. The formula must calculate the requested measure over the exact stated criteria and only reference available columns. An unfiltered AVERAGE/SUM/COUNT does not become criteria-aware when rows are manually filtered. If conditional aggregate functions are forbidden, use an allowed single array formula such as `=AVERAGE(IF(criteria_range=criteria; average_range; ""))`; explain Ctrl+Shift+Enter for Excel 2016/2019.
 - For formula-based tasks, `answerKey.formula` must contain one copyable Excel formula, not prose or multiple formula steps. Keep procedural tasks as concise step instructions.
 - Use a verifiable target that does not assume fixed values in randomly generated rows.

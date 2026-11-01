@@ -33,12 +33,14 @@ Parameters:
 ### CRITICAL RULES:
 - The selected administrative role and industry are mandatory. The scenario, tasks, dataset columns, and enum values must all describe work in the selected role at the selected industry. Do not substitute another role or industry. Use the industry-specific vocabulary above in both the scenario and dataset; do not make a generic unrelated retail/sales case unless that is the selected industry.
 - Dataset rows will be generated from the dataset schema. Give every column a clear meaning for this role and industry. For enum columns, provide realistic values for the selected industry (for example crop/product/asset/service names appropriate to the industry), never generic unrelated products. Include enough operational columns to calculate the requested task answers.
+- The standard case schema generates exactly one source-data sheet. Do not invent a master table, lookup sheet, or second source table that is absent from `dataset.columns`; every task formula must work with the generated source data. The separate `KUNCI_JAWABAN` sheet in the export is documentation, not a second data table.
 - Output MUST be valid JSON only matching the schema below.
 - Do NOT make fake download links! The dataset schema will be used by our code generator to create the real XLSX/CSV file.
 - Provide a clear, realistic Indonesian administrative scenario.
 - In `answerKey`, each formula MUST NOT use any formulas listed under `forbidden`.
 - Treat each task, hint, target, and answer as one contract: the answer formula must perform every filter/condition stated by the task, use the matching dataset columns, and produce the requested measure. Do not merely describe a manual filter before applying an unfiltered AVERAGE/SUM/COUNT; those functions still include filtered-out rows.
 - Before returning JSON, verify each formula-based task against its answer: every required criterion and referenced data column is present in the single formula, every task number has exactly one matching answer, and no answer uses a forbidden or unsupported formula.
+- If an instruction specifies multiple categorical criteria (for example layanan "Kilat" AND status "Terkirim"), the formula must implement every criterion, not merely one of them. Check that the generated dataset contains a column for each criterion.
 - For formula-based tasks, `answerKey.formula` must be one copyable Excel formula, not prose or a sequence of formulas. Keep procedural tasks (Pivot Table, Data Validation, documentation) as concise step instructions instead.
 - Never invent a fixed numeric `targetResult` for rows that the application generates randomly. Use a verifiable outcome such as the expected output type, status, or a result the learner can compare after calculating it.
 - In `answerKey`, the `explanation` MUST be a thorough educational explanation:

@@ -39,6 +39,68 @@ function getExcelColumnName(index: number): string {
   return columnName;
 }
 
+function normalizeNumericLiteral(value: string): string {
+  const cleaned = value.replace(/[^\d.,]/g, '');
+  const normalized = cleaned
+    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+    .replace(/,(?=\d{3}(?:\D|$))/g, '')
+    .replace(',', '.');
+  const number = Number(normalized);
+  return Number.isFinite(number) ? String(number) : '';
+}
+
+function getNumericCriteria(text: string): Array<{ operator: string; value: string }> {
+  const criteria: Array<{ operator: string; value: string }> = [];
+  const pattern =
+    /(?:(minimal(?:nya)?|minimum|setidaknya|setidak-tidaknya|sekurang-kurangnya|paling sedikit|paling tidak|tidak kurang dari|maksimal(?:nya)?|maximum|paling banyak|sebanyak-banyaknya|tidak lebih dari|lebih dari(?: atau sama dengan)?|lebih besar(?: dari)?(?: atau sama dengan)?|kurang dari(?: atau sama dengan)?|lebih kecil(?: dari)?(?: atau sama dengan)?|di bawah|di atas)|([<>]=?))\s*(?:rp\s*)?(\d[\d.,]*)(?:\s*(miliar|milyar|juta|jt|ribu|rb)\b)?/gi;
+
+  for (const match of text.matchAll(pattern)) {
+    const phrase = (match[1] ?? match[2]).toLocaleLowerCase('id');
+    let operator: string;
+    if (
+      phrase.includes('minimal') ||
+      phrase.includes('minimum') ||
+      phrase.includes('setidaknya') ||
+      phrase.includes('sekurang-kurangnya') ||
+      phrase.includes('paling tidak') ||
+      phrase.includes('tidak kurang dari') ||
+      phrase.includes('paling sedikit') ||
+      (phrase.includes('atau sama dengan') && (phrase.includes('lebih') || phrase.includes('besar')))
+    ) {
+      operator = '>=';
+    } else if (
+      phrase.includes('maksimal') ||
+      phrase.includes('maximum') ||
+      phrase.includes('paling banyak') ||
+      phrase.includes('sebanyak-banyaknya') ||
+      phrase.includes('tidak lebih dari')
+    ) {
+      operator = '<=';
+    } else if (phrase.includes('kurang dari') || phrase.includes('lebih kecil') || phrase.includes('di bawah')) {
+      operator = phrase.includes('atau sama dengan') ? '<=' : '<';
+    } else if (phrase.includes('di atas')) {
+      operator = '>';
+    } else if (phrase.includes('lebih dari')) {
+      operator = phrase.includes('atau sama dengan') ? '>=' : '>';
+    } else {
+      operator = phrase;
+    }
+
+    const multiplier = {
+      miliar: 1_000_000_000,
+      milyar: 1_000_000_000,
+      juta: 1_000_000,
+      jt: 1_000_000,
+      ribu: 1_000,
+      rb: 1_000,
+    }[match[4]?.toLocaleLowerCase('id') ?? ''] ?? 1;
+    const parsedValue = Number(normalizeNumericLiteral(match[3])) * multiplier;
+    const value = Number.isFinite(parsedValue) ? String(parsedValue) : '';
+    if (value) criteria.push({ operator, value });
+  }
+  return criteria;
+}
+
 export function getCaseStudyAlignmentIssues(
   caseStudy: CaseStudy,
   role: string,
@@ -123,14 +185,25 @@ export function getTaskAnswerAlignmentIssues(
       }
     }
 
+    const taskText = `${task.instruction} ${task.hint}`.toLocaleLowerCase('id');
     const isAggregate = /\b(rata-rata|rerata|average|total|jumlahkan|frekuensi|persentase|jumlah keseluruhan|nilai tertinggi|nilai terendah)\b/i
-      .test(task.instruction);
+      .test(taskText);
     const mentionsFilterCriterion =
-      /\b(berdasarkan|khusus|hanya|filter|difilter|syarat|kriteria)\b/i.test(task.instruction) ||
-      /\buntuk\s+(layanan|kategori|status|shift|wilayah|departemen|jenis|cabang)\b/i.test(task.instruction);
-    const instructionLower = task.instruction.toLocaleLowerCase('id');
+      /\b(berdasarkan|khusus|hanya|filter|difilter|syarat|kriteria|jika|apabila|bila|ketika|berstatus)\b/i.test(taskText) ||
+      /\buntuk\s+(layanan|kategori|status|shift|wilayah|departemen|jenis|cabang|produk|barang|pegawai|vendor|pelanggan)\b/i.test(taskText);
     const namesEnumValue = caseStudy.dataset.columns.some((column) =>
-      column.values?.some((value) => containsWholeValue(instructionLower, value)),
+      column.values?.some((value) => containsWholeValue(taskText, value)),
+    );
+    const requiredEnumCriteria = caseStudy.dataset.columns.flatMap((column, index) =>
+      column.type === 'enum'
+        ? (column.values ?? [])
+            .filter((value) => containsWholeValue(taskText, value))
+            .map((value) => ({
+              column: column.name,
+              columnLetter: getExcelColumnName(index),
+              value,
+            }))
+        : [],
     );
     const hasCriteriaAwareAggregate =
       /\b(?:SUMIFS?|COUNTIFS?|AVERAGEIFS?|SUMPRODUCT|SUBTOTAL)\s*\(/i.test(formula) ||
@@ -152,8 +225,50 @@ export function getTaskAnswerAlignmentIssues(
       );
     }
 
+    if (
+      formula.startsWith('=') &&
+      requiredEnumCriteria.length > 0 &&
+      (isAggregate || mentionsFilterCriterion)
+    ) {
+      for (const criterion of requiredEnumCriteria) {
+        if (!containsWholeValue(formula, criterion.value)) {
+          issues.push(
+            `kunci tugas ${task.no} tidak menerapkan kriteria "${criterion.value}" pada kolom ${criterion.column}`,
+          );
+        }
+      }
+    }
+
     if (formula.startsWith('=')) {
-      const taskText = `${task.instruction} ${task.hint}`.toLocaleLowerCase('id');
+      const requiredNumericCriteria = getNumericCriteria(taskText);
+      for (const criterion of requiredNumericCriteria) {
+        const operator = criterion.operator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const condition = new RegExp(`${operator}\\s*"?\\s*&?\\s*(\\d[\\d.,]*)`, 'i').exec(formula);
+        const hasCriterion = condition !== null && normalizeNumericLiteral(condition[1]) === criterion.value;
+        if (!hasCriterion) {
+          issues.push(
+            `kunci tugas ${task.no} tidak menerapkan kondisi ${criterion.operator} ${criterion.value} yang disebutkan pada instruksi`,
+          );
+        }
+      }
+
+      if (caseStudy.level !== 'portfolio') {
+        const referencedSheets = Array.from(
+          formula.matchAll(/(?:'((?:[^']|'')+)'|([A-Za-z_][A-Za-z0-9_. ]*))!/g),
+          (match) => (match[1] ?? match[2]).replace(/''/g, "'").trim().toLocaleLowerCase('id'),
+        );
+        const datasetSheetName = caseStudy.dataset.sheetName.toLocaleLowerCase('id');
+        for (const sheetName of referencedSheets) {
+          if (sheetName !== datasetSheetName) {
+            issues.push(
+              `kunci tugas ${task.no} merujuk sheet sumber "${sheetName}" yang tidak tersedia; dataset hanya menyediakan "${caseStudy.dataset.sheetName}"`,
+            );
+          }
+        }
+      }
+    }
+
+    if (formula.startsWith('=')) {
       const normalizedTaskText = taskText.replace(/[_\s]+/g, ' ');
       const formulaWithoutText = formula.replace(/"(?:[^"]|"")*"/g, '""');
       const referencedColumns = new Set(
@@ -167,7 +282,6 @@ export function getTaskAnswerAlignmentIssues(
       );
       const localReferencedColumns = new Set(
         Array.from(referencedColumns)
-          .filter((reference) => !reference.isSheetReference)
           .map((reference) => reference.letter),
       );
       const mentionedDatasetColumns = caseStudy.dataset.columns
@@ -184,7 +298,7 @@ export function getTaskAnswerAlignmentIssues(
           if (normalizedTaskText.includes(column.normalizedName)) {
             const isOutputStatus =
               column.normalizedName === 'status' &&
-              /\b(beri|tentukan|klasifikasikan|isi|buat)\s+status\b|\bberstatus\b/i.test(taskText);
+              /\b(beri|tentukan|menentukan|klasifikasikan|isi|buat)\s+status\b/i.test(taskText);
             return !isOutputStatus;
           }
           const genericTerms = new Set([

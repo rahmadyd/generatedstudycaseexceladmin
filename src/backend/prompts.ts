@@ -38,12 +38,14 @@ Parameters:
 ### CRITICAL RULES:
 - The selected administrative role and industry are mandatory. The scenario, tasks, dataset columns, and enum values must all describe work in the selected role at the selected industry. Do not substitute another role or industry. Use the industry-specific vocabulary above in both the scenario and dataset; do not make a generic unrelated retail/sales case unless that is the selected industry.
 - Dataset rows will be generated from the dataset schema. Give every column a clear meaning for this role and industry. For enum columns, provide realistic values for the selected industry (for example crop/product/asset/service names appropriate to the industry), never generic unrelated products. Include enough operational columns to calculate the requested task answers.
+- The standard case schema generates exactly one source-data sheet. Do not invent a master table, lookup sheet, or second source table that is absent from dataset.columns; every task formula must work with the generated source data. The separate KUNCI_JAWABAN sheet in the export is documentation, not a second data table.
 - Output MUST be valid JSON only matching the schema below.
 - Do NOT make fake download links! The dataset schema will be used by our code generator to create the real XLSX/CSV file.
 - Provide a clear, realistic Indonesian administrative scenario.
 - In answerKey, each formula MUST NOT use any formulas listed under forbidden.
 - Treat each task, hint, target, and answer as one contract: the answer formula must perform every filter/condition stated by the task, use the matching dataset columns, and produce the requested measure. Do not merely describe a manual filter before applying an unfiltered AVERAGE/SUM/COUNT; those functions still include filtered-out rows.
 - Before returning JSON, verify each formula-based task against its answer: every required criterion and referenced data column is present in the single formula, every task number has exactly one matching answer, and no answer uses a forbidden or unsupported formula.
+- If an instruction specifies multiple categorical criteria (for example layanan "Kilat" AND status "Terkirim"), the formula must implement every criterion, not merely one of them. Check that the generated dataset contains a column for each criterion.
 - For formula-based tasks, the answerKey formula field must be one copyable Excel formula, not prose or a sequence of formulas. Keep procedural tasks (Pivot Table, Data Validation, documentation) as concise step instructions.
 - Never invent a fixed numeric targetResult for rows that the application generates randomly. Use a verifiable outcome such as the expected output type, status, or a result the learner can compare after calculating it.
 - In answerKey, the explanation MUST be a thorough educational explanation:
@@ -135,6 +137,7 @@ CRITICAL RULES:
 - "answerKey": { "task": {{taskNo}}, "formula": "=...", "explanation": "..." }
 - In "answerKey", "explanation" MUST be detailed: jelaskan alasan pemilihan rumus, bedah fungsi tiap argumen, dan terangkan mengapa parameter penting digunakan (misal: kenapa harus 0/FALSE untuk exact match, kenapa ada tanda $ untuk kunci rentang).
 - The formula MUST NOT use any formulas in forbidden list: {{forbiddenFormulas}}!
+- Apply every categorical criterion stated in the task. The standard case has one generated source-data sheet; do not reference a master/lookup table or another source sheet that is not included in the available dataset columns. \`KUNCI_JAWABAN\` is documentation, not a source table.
 - The new instruction, hint, target, and answer must describe the same operation. The formula must calculate the requested measure over the exact stated criteria and only reference available columns. An unfiltered AVERAGE/SUM/COUNT does not become criteria-aware when rows are manually filtered. If conditional aggregate functions are forbidden, use an allowed single array formula such as \`=AVERAGE(IF(criteria_range=criteria; average_range; ""))\`; explain Ctrl+Shift+Enter for Excel 2016/2019.
 - For formula-based tasks, the answerKey formula field must contain one copyable Excel formula, not prose or multiple formula steps. Keep procedural tasks as concise step instructions.
 - Use a verifiable target that does not assume fixed values in randomly generated rows.

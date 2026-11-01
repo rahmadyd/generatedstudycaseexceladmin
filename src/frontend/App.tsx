@@ -15,6 +15,7 @@ import { HistoryModal } from './components/HistoryModal';
 
 import { CaseStudy, GenerateRequest, INDUSTRY_OPTIONS, Level } from '@/shared/schema';
 import { FALLBACK_CASES } from '@/backend/fallbacks';
+import { getTaskAnswerAlignmentIssues } from '@/backend/validator';
 import { generateDatasetRows } from './utils/dataset-generator';
 import {
   SavedSettings,
@@ -78,7 +79,7 @@ export default function App() {
       if (urlSeed) {
         // If matches history item
         const existing = savedHistory.find((c) => c.seed === urlSeed);
-        if (existing) {
+        if (existing && getTaskAnswerAlignmentIssues(existing).length === 0) {
           setCaseStudy(existing);
           setCompletedTasks(getTaskProgress(existing.seed));
           return;
@@ -104,7 +105,13 @@ export default function App() {
 
     // Default: use last history if available, else fallback
     if (savedHistory.length > 0) {
-      const latest = savedHistory[0];
+      const latest = savedHistory.find((savedCase) =>
+        getTaskAnswerAlignmentIssues(savedCase).length === 0,
+      );
+      if (!latest) {
+        setErrorMsg('Kasus yang tersimpan dari versi sebelumnya tidak lolos pemeriksaan keselarasan tugas dan kunci. Silakan buat kasus baru.');
+        return;
+      }
       setCaseStudy(latest);
       setCompletedTasks(getTaskProgress(latest.seed));
     }
@@ -230,6 +237,11 @@ export default function App() {
   };
 
   const handleSelectCaseFromHistory = (selected: CaseStudy) => {
+    if (getTaskAnswerAlignmentIssues(selected).length > 0) {
+      setErrorMsg('Kasus riwayat ini tidak lolos pemeriksaan keselarasan tugas dan kunci. Buat kasus baru untuk mendapatkan kunci yang sudah diperiksa.');
+      setIsHistoryOpen(false);
+      return;
+    }
     setCaseStudy(selected);
     const progress = getTaskProgress(selected.seed);
     setCompletedTasks(progress);
