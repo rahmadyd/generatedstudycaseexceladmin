@@ -13,7 +13,7 @@ import { PortfolioSection } from './components/PortfolioSection';
 import { PDFExportSection } from './components/PDFExportSection';
 import { HistoryModal } from './components/HistoryModal';
 
-import { CaseStudy, GenerateRequest, INDUSTRY_OPTIONS, Level } from '@/shared/schema';
+import { CaseStudy, GenerateRequest } from '@/shared/schema';
 import { FALLBACK_CASES } from '@/backend/fallbacks';
 import { getTaskAnswerAlignmentIssues } from '@/backend/validator';
 import { generateDatasetRows } from './utils/dataset-generator';
@@ -68,38 +68,14 @@ export default function App() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const urlSeed = params.get('seed');
-      const urlLevel = (params.get('level') as Level) || null;
-      const urlRole = params.get('role') || null;
-      const urlIndustry = params.get('industry');
-      const urlFormulaStyle = params.get('formulaStyle');
-      const urlStructuredReferenceAt = params.get('structuredReferenceAt');
-      const urlTaskCountMode = params.get('taskCountMode');
-      const urlTaskCount = Number(params.get('taskCount'));
 
       if (urlSeed) {
-        // If matches history item
         const existing = savedHistory.find((c) => c.seed === urlSeed);
         if (existing && getTaskAnswerAlignmentIssues(existing).length === 0) {
           setCaseStudy(existing);
           setCompletedTasks(getTaskProgress(existing.seed));
           return;
         }
-
-        // Else generate with that seed
-        handleGenerate({
-          level: urlLevel || 'easy',
-          role: urlRole || 'Penjualan',
-          excelVersion: 'Microsoft 365',
-          industry: urlIndustry === 'Acak' || INDUSTRY_OPTIONS.includes(urlIndustry as (typeof INDUSTRY_OPTIONS)[number])
-            ? urlIndustry as GenerateRequest['industry']
-            : 'Acak',
-          formulaStyle: urlFormulaStyle === 'modern' ? 'modern' : 'classic',
-          structuredReferenceAt: urlStructuredReferenceAt !== 'false',
-          taskCountMode: urlTaskCountMode === 'auto' ? 'auto' : 'manual',
-          taskCount: Number.isInteger(urlTaskCount) && [5, 8, 10, 15, 20].includes(urlTaskCount) ? urlTaskCount : 5,
-          seed: urlSeed,
-        });
-        return;
       }
     }
 
