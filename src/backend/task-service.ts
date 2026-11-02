@@ -22,8 +22,20 @@ import {
   GroqResponseParseError,
 } from './ai-client';
 import { GENERATION_CONFIG } from '../shared/generation-config';
-import { generateDatasetRows } from '../shared/dataset-generator';
+import {
+  DatasetInput,
+  RawDatasetSchema,
+  UnknownColumnTypeError,
+  normalizeDatasetRows,
+  resolveDatasetColumns,
+} from '@/lib/column-types';
+import {
+  DatasetValidationError,
+  buildValidatedDataset,
+  type ValidatedDatasetBuild,
+} from '../shared/dataset-validation';
 import { buildDeterministicTasks, ensureTemplateDataset } from './task-templates';
+import { getIndustryColumnValues } from '../shared/constants';
 import { validateTaskCalculation } from './formula-engine';
 import { LEVEL_RULES } from '../shared/level-rules';
 import {
@@ -31,6 +43,26 @@ import {
   getTaskAnswerAlignmentIssues,
   validateAndSanitizeCaseStudy,
 } from './validator';
+
+/**
+ * Membangun dataset tervalidasi dengan seed yang sama seperti yang dipakai
+ * prompt, UI, dan perhitungan kunci jawaban. Gagal validasi setelah 3 seed
+ * akan melempar DatasetValidationError (dataset buruk tidak pernah dipakai).
+ */
+function buildCaseDataset(context: {
+  seed: string;
+  level: CaseStudy['level'];
+  industry?: CaseStudy['industry'];
+  dataset: DatasetInput;
+}): ValidatedDatasetBuild {
+  return buildValidatedDataset({
+    seed: context.seed,
+    level: context.level,
+    industry: context.industry,
+    dataset: context.dataset,
+    categoryValues: (columnName) => getIndustryColumnValues(columnName, context.industry),
+  });
+}
 
 function cleanJsonString(str: string): string {
   let cleaned = str.trim();
@@ -98,23 +130,41 @@ function normalizeAnswerKeyFormula(formula: string | undefined): string {
 async function completeStagedContent(initialCase: CaseStudy): Promise<CaseStudy> {
   let caseStudy: CaseStudy = { ...initialCase };
   try {
-    const rows = generateDatasetRows(caseStudy);
     if (caseStudy.level === 'easy' || caseStudy.level === 'middle') {
-      const dataset = ensureTemplateDataset(
+      const datasetInput = ensureTemplateDataset(
         caseStudy.dataset,
         caseStudy.level,
         caseStudy.role,
         caseStudy.industry,
       );
+      const built = buildCaseDataset({
+        seed: caseStudy.seed,
+        level: caseStudy.level,
+        industry: caseStudy.industry,
+        dataset: datasetInput,
+      });
       const generated = buildDeterministicTasks({
-        dataset,
+        dataset: built.dataset,
         level: caseStudy.level,
         role: caseStudy.role,
         excelVersion: caseStudy.excelVersion,
-      }, generateDatasetRows({ seed: caseStudy.seed, level: caseStudy.level, industry: caseStudy.industry, dataset }),
-      caseStudy.tasks.length);
-      caseStudy = { ...caseStudy, dataset, tasks: generated.tasks, answerKey: generated.answerKey };
+      }, built.rows, caseStudy.tasks.length);
+      caseStudy = {
+        ...caseStudy,
+        seed: built.seed,
+        dataset: built.dataset,
+        tasks: generated.tasks,
+        answerKey: generated.answerKey,
+      };
     } else {
+      const built = buildCaseDataset({
+        seed: caseStudy.seed,
+        level: caseStudy.level,
+        industry: caseStudy.industry,
+        dataset: caseStudy.dataset,
+      });
+      const rows = built.rows;
+      caseStudy = { ...caseStudy, seed: built.seed, dataset: built.dataset };
       caseStudy.answerKey = caseStudy.tasks.map((task) => {
         const existing = caseStudy.answerKey.find((answer) => answer.task === task.no);
         if (task.answerMode === 'rubric') {
@@ -211,24 +261,37 @@ export async function generateCaseStudyService(
       });
 
       const parsed = parseAIJson(rawResponse, 'Gagal parse JSON dari AI');
-      const datasetResult = DatasetSchema.safeParse(parsed.dataset);
+      const datasetResult = RawDatasetSchema.safeParse(parsed.dataset);
       if (!datasetResult.success) {
         throw new Error(`Schema dataset tidak valid: ${formatZodIssues(datasetResult.error.issues)}`);
       }
 
-      const dataset = ensureTemplateDataset({
-        ...datasetResult.data,
-        rows: Math.max(50, Math.min(datasetResult.data.rows, 500)),
-      }, req.level, req.role, industry);
-      const rows = generateDatasetRows({ seed, level: req.level, industry, dataset });
+      // Kolom AI dipetakan ke registry tipe TERTUTUP memakai nama kolom lebih dulu,
+      // sehingga kolom tak dikenal melempar UnknownColumnTypeError (bukan teks acak).
+      const resolvedColumns = resolveDatasetColumns(datasetResult.data.columns, {
+        categoryValues: (columnName) => getIndustryColumnValues(columnName, industry),
+      });
+      const resolvedDataset = DatasetSchema.parse({
+        sheetName: datasetResult.data.sheetName,
+        rows: normalizeDatasetRows(datasetResult.data.rows),
+        columns: resolvedColumns,
+        traps: [],
+      });
+      const dataset = ensureTemplateDataset(resolvedDataset, req.level, req.role, industry);
+      // Dataset dibangun + DIVALIDASI sebelum dipakai prompt/UI/export. Bila gagal,
+      // buildValidatedDataset mengulang dengan seed baru maksimal 3x lalu melempar error.
+      const built = buildCaseDataset({ seed, level: req.level, industry, dataset });
+      const effectiveSeed = built.seed;
+      const canonicalDataset = built.dataset;
+      const rows = built.rows;
       const formulas = {
         recommended: [...LEVEL_RULES[req.level].allowedFunctions],
         allowed: [...LEVEL_RULES[req.level].allowedFunctions],
         forbidden: [...LEVEL_RULES[req.level].forbiddenFunctions],
       };
       const metadata = {
-        id: `case-${seed}`,
-        seed,
+        id: `case-${effectiveSeed}`,
+        seed: effectiveSeed,
         generationTheme,
         createdAt: new Date().toISOString(),
         title: parsed.title,
@@ -243,14 +306,14 @@ export async function generateCaseStudyService(
         scenario: parsed.scenario,
         dataTraps: parsed.dataTraps,
         formulas,
-        dataset,
+        dataset: canonicalDataset,
       };
 
       let tasks: Task[];
       let answerKey: CaseStudy['answerKey'];
       if (req.level === 'easy' || req.level === 'middle') {
         const generated = buildDeterministicTasks({
-          dataset,
+          dataset: canonicalDataset,
           level: req.level,
           role: req.role,
           excelVersion: req.excelVersion,
@@ -275,7 +338,7 @@ export async function generateCaseStudyService(
         }
         tasks = taskResult.data.map((task, index) => ({ ...task, no: index + 1 }));
         const availableTaskKinds = new Set(LEVEL_RULES.advance.taskKinds);
-        const availableColumns = new Set(dataset.columns.map((column) => column.name));
+        const availableColumns = new Set(canonicalDataset.columns.map((column) => column.name));
         answerKey = tasks.map((task) => {
           if (!availableTaskKinds.has(task.taskKind)) {
             throw new Error(`Tugas ${task.no}: jenis ${task.taskKind} tidak diizinkan pada level Advance.`);
@@ -306,7 +369,7 @@ export async function generateCaseStudyService(
           const expectedValue = validateTaskCalculation(
             task,
             formula,
-            { dataset, level: req.level, excelVersion: req.excelVersion },
+            { dataset: canonicalDataset, level: req.level, excelVersion: req.excelVersion },
             rows,
           );
           return {
@@ -356,6 +419,11 @@ export async function generateCaseStudyService(
       return validation.data;
     } catch (err) {
       const msg = (err as Error).message || '';
+      // Error keras: kolom tak dikenal atau dataset gagal validasi setelah 3 seed.
+      // Jangan ditutup-tutupi oleh retry generik agar pesannya sampai ke UI.
+      if (err instanceof DatasetValidationError || err instanceof UnknownColumnTypeError) {
+        throw err;
+      }
       console.warn('[generate] attempt failed', JSON.stringify({
         requestId,
         clientRequestId,
@@ -394,24 +462,25 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
   if (!oldTask) throw new Error(`Tugas nomor ${taskNo} tidak ditemukan.`);
 
   if (caseStudy.level !== 'advance') {
-    const dataset = ensureTemplateDataset(
+    const datasetInput = ensureTemplateDataset(
       caseStudy.dataset,
       caseStudy.level,
       caseStudy.role,
       caseStudy.industry,
     );
-    const candidateCount = Math.min(25, caseStudy.tasks.length + 1);
-    const generated = buildDeterministicTasks({
-      dataset,
-      level: caseStudy.level,
-      role: caseStudy.role,
-      excelVersion: caseStudy.excelVersion,
-    }, generateDatasetRows({
+    const built = buildCaseDataset({
       seed: caseStudy.seed,
       level: caseStudy.level,
       industry: caseStudy.industry,
-      dataset,
-    }), candidateCount);
+      dataset: datasetInput,
+    });
+    const candidateCount = Math.min(25, caseStudy.tasks.length + 1);
+    const generated = buildDeterministicTasks({
+      dataset: built.dataset,
+      level: caseStudy.level,
+      role: caseStudy.role,
+      excelVersion: caseStudy.excelVersion,
+    }, built.rows, candidateCount);
     const otherInstructions = new Set(
       caseStudy.tasks.filter((task) => task.no !== taskNo).map((task) => task.instruction),
     );
@@ -425,7 +494,8 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     if (!candidateAnswer) throw new Error('Kunci tugas deterministik tidak ditemukan.');
     const regeneratedCase: CaseStudy = {
       ...caseStudy,
-      dataset,
+      seed: built.seed,
+      dataset: built.dataset,
       tasks: caseStudy.tasks.map((task) => task.no === taskNo ? { ...candidate, no: taskNo } : task),
       answerKey: [
         ...caseStudy.answerKey.filter((answer) => answer.task !== taskNo),
@@ -458,9 +528,15 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     structuredReferenceAt: caseStudy.structuredReferenceAt,
     recommendedFormulas: caseStudy.formulas.recommended,
     forbiddenFormulas: caseStudy.formulas.forbidden,
-    columns: caseStudy.dataset.columns.map((column) =>
-      `${column.name} (${column.type}${column.values ? `; values: ${column.values.join(' | ')}` : ''}${column.range ? `; range: ${column.range.join(' to ')}` : ''})`,
-    ),
+    columns: caseStudy.dataset.columns.map((column) => {
+      const details = [
+        column.values ? `values: ${column.values.join(' | ')}` : '',
+        column.min !== undefined && column.max !== undefined ? `min ${column.min}, max ${column.max}` : '',
+        column.from && column.to ? `${column.from} s/d ${column.to}` : '',
+        column.expression ? `expression: ${column.expression}` : '',
+      ].filter(Boolean);
+      return `${column.name} (${column.type}${details.length ? `; ${details.join('; ')}` : ''})`;
+    }),
     taskNo,
     oldInstruction: oldTask.instruction,
   });
@@ -529,7 +605,12 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
       task,
       formula,
       caseStudy,
-      generateDatasetRows(caseStudy),
+      buildCaseDataset({
+        seed: caseStudy.seed,
+        level: caseStudy.level,
+        industry: caseStudy.industry,
+        dataset: caseStudy.dataset,
+      }).rows,
     );
     task.formula = formula;
     replacementAnswer = {

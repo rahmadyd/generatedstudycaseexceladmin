@@ -1,4 +1,13 @@
 import { z } from 'zod';
+import {
+  DatasetColumnSchema,
+  DatasetSchema,
+  type DatasetColumn,
+  type DatasetSpec,
+} from '@/lib/column-types';
+
+export { DatasetColumnSchema, DatasetSchema };
+export type { DatasetColumn, DatasetSpec };
 
 export const LevelEnum = z.enum(['easy', 'middle', 'advance']);
 export type Level = z.infer<typeof LevelEnum>;
@@ -46,91 +55,47 @@ export type Industry = z.infer<typeof IndustryEnum>;
 
 export const TaskCountModeEnum = z.enum(['auto', 'manual']);
 export type TaskCountMode = z.infer<typeof TaskCountModeEnum>;
+export const AnswerModeEnum = z.enum(['computed', 'rubric']);
+export type AnswerMode = z.infer<typeof AnswerModeEnum>;
+export const TaskKindEnum = z.enum([
+  'calculation',
+  'conditional-logic',
+  'sorting',
+  'filtering',
+  'formatting',
+  'conditional-aggregation',
+  'lookup',
+  'data-validation',
+  'multi-criteria-analysis',
+  'pivot-table',
+  'conditional-formatting',
+  'named-range',
+  'portfolio',
+]);
+export type TaskKind = z.infer<typeof TaskKindEnum>;
 
 export const TaskSchema = z.object({
   no: z.number(),
   instruction: z.string().min(3),
   hint: z.string().default(''),
   targetResult: z.string().default(''),
+  columnsUsed: z.array(z.string()).default([]),
+  dateColumn: z.string().optional(),
+  formula: z.string().optional(),
+  answerMode: AnswerModeEnum.default('computed'),
+  taskKind: TaskKindEnum.default('calculation'),
+  rubricChecklist: z.array(z.string()).default([]),
 });
 export type Task = z.infer<typeof TaskSchema>;
 
-export const DatasetColumnSchema = z.object({
-  name: z.string().min(1),
-  type: z.enum(['date', 'text', 'number', 'int', 'currency', 'enum']),
-  values: z.array(z.string()).optional(),
-  range: z.union([z.tuple([z.number(), z.number()]), z.tuple([z.string(), z.string()])]).optional(),
-}).superRefine((column, context) => {
-  if (column.values && column.type !== 'enum') {
-    context.addIssue({
-      code: 'custom',
-      path: ['values'],
-      message: 'values hanya boleh digunakan pada kolom enum.',
-    });
-  }
-  if (column.type === 'enum' && (!column.values || column.values.length === 0)) {
-    context.addIssue({
-      code: 'custom',
-      path: ['values'],
-      message: 'Kolom enum harus memiliki minimal satu nilai teks.',
-    });
-  }
-  if (!column.range) return;
-
-  if (column.type === 'number' || column.type === 'int' || column.type === 'currency') {
-    const [min, max] = column.range;
-    if (
-      typeof min !== 'number' ||
-      typeof max !== 'number' ||
-      !Number.isSafeInteger(min) ||
-      !Number.isSafeInteger(max) ||
-      min > max
-    ) {
-      context.addIssue({
-        code: 'custom',
-        path: ['range'],
-        message: 'Range numeric harus dua bilangan bulat aman dengan min <= max.',
-      });
-    }
-    return;
-  }
-
-  if (column.type === 'date') {
-    const [start, end] = column.range;
-    const isIsoDate = (value: string | number): value is string => {
-      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-      const date = new Date(`${value}T00:00:00.000Z`);
-      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
-    };
-    if (!isIsoDate(start) || !isIsoDate(end) || start > end) {
-      context.addIssue({
-        code: 'custom',
-        path: ['range'],
-        message: 'Range tanggal harus dua tanggal ISO valid dan berurutan.',
-      });
-    }
-    return;
-  }
-
-  context.addIssue({
-    code: 'custom',
-    path: ['range'],
-    message: 'Range hanya boleh digunakan pada kolom tanggal atau numerik.',
-  });
-});
-export type DatasetColumn = z.infer<typeof DatasetColumnSchema>;
-
-export const DatasetSchema = z.object({
-  sheetName: z.string().default('Data_Admin'),
-  rows: z.number().min(20).max(1000).default(150),
-  columns: z.array(DatasetColumnSchema).min(3),
-});
-export type DatasetSpec = z.infer<typeof DatasetSchema>;
-
 export const AnswerKeyItemSchema = z.object({
   task: z.number(),
-  formula: z.string().min(1),
+  formula: z.string().min(1).optional(),
   explanation: z.string().default(''),
+  expectedValue: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+  columnsUsed: z.array(z.string()).default([]),
+  mode: AnswerModeEnum.default('computed'),
+  rubricChecklist: z.array(z.string()).default([]),
 });
 export type AnswerKeyItem = z.infer<typeof AnswerKeyItemSchema>;
 

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GenerateRequestSchema } from '@/shared/schema';
 import { generateCaseStudyService } from '@/backend/task-service';
 import { checkRateLimit } from '@/backend/rate-limit';
+import { DatasetValidationError } from '@/shared/dataset-validation';
+import { UnknownColumnTypeError } from '@/lib/column-types';
 import {
   GroqApiError,
   GroqJsonValidationError,
@@ -76,6 +78,26 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     console.error('API /api/generate error:', error);
+    if (error instanceof DatasetValidationError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: 'DATASET_VALIDATION_ERROR',
+          issues: error.issues.slice(0, 5),
+        },
+        { status: 422, headers: NO_STORE_HEADERS },
+      );
+    }
+    if (error instanceof UnknownColumnTypeError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: 'UNKNOWN_COLUMN_TYPE',
+          column: error.columnName,
+        },
+        { status: 422, headers: NO_STORE_HEADERS },
+      );
+    }
     if (error instanceof GroqJsonValidationError) {
       return NextResponse.json(
         {

@@ -14,7 +14,9 @@ import { HistoryModal } from './components/HistoryModal';
 
 import { CaseStudy, GenerateRequest } from '@/shared/schema';
 import { getTaskAnswerAlignmentIssues } from '@/backend/validator';
-import { generateDatasetRows } from './utils/dataset-generator';
+import { type DataRow } from '@/shared/dataset-generator';
+import { buildValidatedDataset } from '@/shared/dataset-validation';
+import { getIndustryColumnValues } from '@/shared/constants';
 import {
   SavedSettings,
   getSavedCasesHistory,
@@ -80,7 +82,7 @@ export default function App() {
 
       if (urlSeed) {
         const existing = savedHistory.find((c) => c.seed === urlSeed);
-        if (existing && getTaskAnswerAlignmentIssues(existing).length === 0) {
+        if (existing && getTaskAnswerAlignmentIssues(existing).errors.length === 0) {
           setCaseStudy(existing);
           setCompletedTasks(getTaskProgress(existing.seed));
           return;
@@ -91,7 +93,7 @@ export default function App() {
     // Load the latest previously generated case; new visitors start without a sample case.
     if (savedHistory.length > 0) {
       const latest = savedHistory.find((savedCase) =>
-        getTaskAnswerAlignmentIssues(savedCase).length === 0,
+        getTaskAnswerAlignmentIssues(savedCase).errors.length === 0,
       );
       if (!latest) {
         setErrorMsg('Kasus yang tersimpan dari versi sebelumnya tidak lolos pemeriksaan keselarasan tugas dan kunci. Silakan buat kasus baru.');
@@ -132,10 +134,26 @@ export default function App() {
     }
   };
 
-  // Re-generate dataset rows when caseStudy or seed changes
-  const datasetRows = useMemo(() => {
-    return caseStudy ? generateDatasetRows(caseStudy) : [];
+  // Dataset dibangun ulang dari seed & skema kanonik yang sama seperti server,
+  // lalu DIVALIDASI sebelum ditampilkan/diekspor. Dataset yang gagal validasi
+  // tidak pernah ditampilkan ke pengguna.
+  const datasetResult = useMemo<{ rows: DataRow[]; error: string | null }>(() => {
+    if (!caseStudy) return { rows: [], error: null };
+    try {
+      const built = buildValidatedDataset({
+        seed: caseStudy.seed,
+        level: caseStudy.level,
+        industry: caseStudy.industry,
+        dataset: caseStudy.dataset,
+        categoryValues: (columnName) => getIndustryColumnValues(columnName, caseStudy.industry),
+      });
+      return { rows: built.rows, error: null };
+    } catch (error) {
+      console.error('[dataset] validasi gagal di UI', error);
+      return { rows: [], error: (error as Error).message };
+    }
   }, [caseStudy]);
+  const datasetRows = datasetResult.rows;
 
   const handleGenerate = async (req: GenerateRequest) => {
     if (generateInFlightRef.current) return;
@@ -371,7 +389,7 @@ export default function App() {
   };
 
   const handleSelectCaseFromHistory = (selected: CaseStudy) => {
-    if (getTaskAnswerAlignmentIssues(selected).length > 0) {
+    if (getTaskAnswerAlignmentIssues(selected).errors.length > 0) {
       setErrorMsg('Kasus riwayat ini tidak lolos pemeriksaan keselarasan tugas dan kunci. Buat kasus baru untuk mendapatkan kunci yang sudah diperiksa.');
       setIsHistoryOpen(false);
       return;
@@ -439,7 +457,17 @@ export default function App() {
           <div key={caseStudy.id ?? caseStudy.seed} className="space-y-8">
             <CaseHeader caseStudy={caseStudy} />
             <ScenarioSection caseStudy={caseStudy} />
-            <DatasetSection caseStudy={caseStudy} datasetRows={datasetRows} />
+            {datasetResult.error ? (
+              <div className="p-4 bg-red-50 dark:bg-red-950/50 border border-red-300 dark:border-red-800 rounded-2xl flex items-start space-x-3 text-red-800 dark:text-red-200">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm">
+                  <span className="font-bold">Dataset gagal validasi dan tidak ditampilkan. </span>
+                  <span>{datasetResult.error}</span>
+                </div>
+              </div>
+            ) : (
+              <DatasetSection caseStudy={caseStudy} datasetRows={datasetRows} />
+            )}
             <TasksSection
               caseStudy={caseStudy}
               completedTasks={completedTasks}
@@ -454,7 +482,9 @@ export default function App() {
               missingContentError={missingContentError}
             />
             <FormulaClues formulas={caseStudy.formulas} />
-            <PDFExportSection caseStudy={caseStudy} datasetRows={datasetRows} />
+            {datasetResult.error ? null : (
+              <PDFExportSection caseStudy={caseStudy} datasetRows={datasetRows} />
+            )}
           </div>
         ) : isLoading ? (
           <div

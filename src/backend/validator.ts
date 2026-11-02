@@ -1,7 +1,9 @@
-import { CaseStudy, CaseStudySchema } from '../shared/schema';
+import { CaseStudy, CaseStudySchema, DatasetSchema } from '../shared/schema';
 import { getIndustryColumnValues, INDUSTRY_PROFILES, M365_ONLY_FORMULAS, ROLE_PROFILES } from '../shared/constants';
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
-import { generateDatasetRows } from '../shared/dataset-generator';
+import { type DataRow } from '../shared/dataset-generator';
+import { buildValidatedDataset } from '../shared/dataset-validation';
+import { isIsoDate, resolveDatasetColumns } from '@/lib/column-types';
 import { validateTaskCalculation } from './formula-engine';
 import { getFormulaFunctionNames, LEVEL_RULES } from '../shared/level-rules';
 
@@ -25,18 +27,15 @@ function sanitizeDatasetRange(
 ): [number, number] | [string, string] | undefined {
   if (!Array.isArray(range) || range.length !== 2) return undefined;
 
-  if (columnType === 'number' || columnType === 'int' || columnType === 'currency') {
+  if (columnType === 'integer' || columnType === 'decimal' || columnType === 'currency' ||
+    columnType === 'int' || columnType === 'number') {
     const numericValues = range.map((value) => {
       if (typeof value === 'number') return value;
       if (typeof value !== 'string' || !/^-?\d+(?:\.\d+)?$/.test(value.trim())) return NaN;
       return Number(value);
     });
     const [min, max] = numericValues;
-    if (
-      Number.isSafeInteger(min) &&
-      Number.isSafeInteger(max) &&
-      min <= max
-    ) {
+    if (Number.isFinite(min) && Number.isFinite(max) && min <= max) {
       return [min, max];
     }
     return undefined;
@@ -44,11 +43,6 @@ function sanitizeDatasetRange(
 
   if (columnType === 'date') {
     const [start, end] = range;
-    const isIsoDate = (value: unknown): value is string => {
-      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-      const date = new Date(`${value}T00:00:00.000Z`);
-      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
-    };
     if (isIsoDate(start) && isIsoDate(end) && start <= end) {
       return [start, end];
     }
@@ -79,13 +73,11 @@ function preSanitizeRawJson(raw: unknown): unknown {
     ? dataset.columns.map((rawColumn) => {
         if (typeof rawColumn !== 'object' || rawColumn === null || Array.isArray(rawColumn)) return rawColumn;
         const column = rawColumn as Record<string, unknown>;
-        let type = column.type === undefined ? undefined : String(column.type).toLowerCase();
-        if (type === 'string') type = 'text';
-        if (type === 'integer') type = 'int';
+        const type = column.type === undefined ? undefined : String(column.type).toLowerCase();
         return {
           ...column,
           type,
-          values: type === 'enum' ? sanitizeDatasetValues(column.values) : column.values,
+          values: sanitizeDatasetValues(column.values),
           range: sanitizeDatasetRange(column.range, type),
         };
       })
@@ -163,6 +155,25 @@ export function getCaseStudyAlignmentIssues(
   return issues;
 }
 
+/**
+ * Baris dataset yang sudah DIVALIDASI (seed sama dengan yang dipakai prompt/UI).
+ * Bila validasi gagal, kembalikan baris kosong agar pemeriksaan kunci jawaban
+ * tidak memakai data buruk.
+ */
+function resolveValidatedRows(caseStudy: CaseStudy): DataRow[] {
+  try {
+    return buildValidatedDataset({
+      seed: caseStudy.seed,
+      level: caseStudy.level,
+      industry: caseStudy.industry,
+      dataset: caseStudy.dataset,
+    }).rows;
+  } catch (error) {
+    console.warn('[validator] dataset gagal divalidasi', (error as Error).message);
+    return [];
+  }
+}
+
 export function getTaskAnswerAlignmentIssues(
   caseStudy: CaseStudy,
   taskNumbers?: number[],
@@ -175,7 +186,7 @@ export function getTaskAnswerAlignmentIssues(
   const answers = taskNumbers
     ? caseStudy.answerKey.filter((answer) => taskNumbers.includes(answer.task))
     : caseStudy.answerKey;
-  const datasetRows = generateDatasetRows(caseStudy);
+  const datasetRows = resolveValidatedRows(caseStudy);
   const availableColumns = new Set(caseStudy.dataset.columns.map((column) => column.name));
   const forbiddenFunctions = new Set(LEVEL_RULES[caseStudy.level].forbiddenFunctions);
   const allowedFunctions = new Set(LEVEL_RULES[caseStudy.level].allowedFunctions);
@@ -329,12 +340,15 @@ export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVers
   }
 
   const caseStudy = parseResult.data;
-  for (const column of caseStudy.dataset.columns) {
-    const industryValues = getIndustryColumnValues(column.name, caseStudy.industry);
-    if (industryValues && column.type === 'enum') {
-      column.values = industryValues;
-    }
-  }
+  // Kolom AI dipetakan ke registry tipe TERTUTUP memakai nama kolom, sehingga
+  // "Jam_Masuk" selalu `time` dan "Cuti" selalu `integer` (tidak pernah teks acak).
+  const resolvedColumns = resolveDatasetColumns(caseStudy.dataset.columns, {
+    categoryValues: (name) => getIndustryColumnValues(name, caseStudy.industry),
+  });
+  caseStudy.dataset = DatasetSchema.parse({
+    ...caseStudy.dataset,
+    columns: resolvedColumns,
+  });
   const excelVersion = expectedExcelVersion || caseStudy.excelVersion || 'Microsoft 365';
   const levelRules = LEVEL_RULES[caseStudy.level];
   const versionForbidden = excelVersion === '2016/2019'

@@ -1,6 +1,36 @@
-import { faker } from '@faker-js/faker';
-import { CaseStudy, DatasetColumn, DatasetSpec, Industry, Level } from './schema';
-import { getIndustryColumnValues, INDUSTRY_PROFILES } from './constants';
+import { Faker, id_ID, en } from '@faker-js/faker';
+import { CaseStudy, DatasetSpec, Industry, Level } from './schema';
+import {
+  DatasetColumn,
+  DatasetInput,
+  DatasetSchema,
+  DatasetTrap,
+  DatasetTrapKind,
+  dictionaryForName,
+  isNumericType,
+  minutesToTime,
+  normalizeColumnName,
+  normalizeDatasetRows,
+  resolveDatasetColumns,
+  timeToMinutes,
+} from '@/lib/column-types';
+
+export type DataRow = Record<string, string | number | null>;
+
+export interface DatasetGenerationContext {
+  seed: string;
+  level: Level;
+  industry?: Industry;
+  dataset: DatasetInput;
+  /** Callback nilai kategori dari industri (opsional, dari backend). */
+  categoryValues?: (columnName: string) => string[] | undefined;
+}
+
+export interface DatasetBuildResult {
+  rows: DataRow[];
+  dataset: DatasetSpec;
+  traps: DatasetTrap[];
+}
 
 // Simple deterministic hash to number for seeded PRNG
 function cyrb53(str: string, seed = 0) {
@@ -16,273 +46,353 @@ function cyrb53(str: string, seed = 0) {
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
-export type DataRow = Record<string, string | number | null>;
+/** Faker selalu memakai locale Indonesia dan seed unik per generate. */
+function createSeededFaker(seed: string): Faker {
+  const faker = new Faker({ locale: [id_ID, en] });
+  faker.seed(cyrb53(seed || 'excel-admin-seed'));
+  return faker;
+}
 
-export interface DatasetGenerationContext {
-  seed: string;
-  level: Level;
-  industry?: Industry;
-  dataset: DatasetSpec;
+function resolveColumns(context: DatasetGenerationContext): DatasetColumn[] {
+  return resolveDatasetColumns(context.dataset.columns, {
+    categoryValues: context.categoryValues,
+  });
 }
 
 /**
- * Generates realistic dataset rows based on CaseStudy.dataset schema and seed.
- * For Middle and Advance levels, automatically injects intentional data traps!
+ * Membangun dataset tervalidasi: kolom di-resolve ke registry tipe tertutup,
+ * baris dibangkitkan deterministik dari seed, lalu jebakan data yang disengaja
+ * diterapkan dan dicatat di `dataset.traps`.
  */
-export function generateDatasetRows(context: DatasetGenerationContext | CaseStudy): DataRow[] {
-  const seedNum = cyrb53(context.seed || 'excel-admin-seed');
-  faker.seed(seedNum);
-
-  const { columns, rows: targetRowCount } = context.dataset;
-  const rowCount = Math.max(50, Math.min(targetRowCount || 150, 500));
-  const isTrapLevel = context.level !== 'easy';
+export function buildDataset(context: DatasetGenerationContext | CaseStudy): DatasetBuildResult {
+  const faker = createSeededFaker(context.seed);
+  const columns = resolveColumns(context as DatasetGenerationContext);
+  const rowCount = normalizeDatasetRows(context.dataset.rows);
+  const level: Level = context.level;
 
   const rows: DataRow[] = [];
-
-  for (let i = 0; i < rowCount; i++) {
+  for (let i = 0; i < rowCount; i += 1) {
     const row: DataRow = {};
-
-    for (const col of columns) {
-      row[col.name] = generateCellValue(col, i, context);
+    for (const column of orderColumns(columns)) {
+      row[column.name] = generateCellValue(column, i, faker, row);
     }
-
+    applyRowRules(columns, row);
     rows.push(row);
   }
 
-  // Inject intentional data traps for Middle and Advance levels
-  if (isTrapLevel && rows.length > 20) {
-    injectDataTraps(rows, columns, seedNum);
-  }
+  const traps = planTraps(columns, context.seed, level, rowCount);
+  applyTraps(rows, traps);
 
-  return rows;
-}
-
-function generateCellValue(
-  col: DatasetColumn,
-  rowIndex: number,
-  context: DatasetGenerationContext | CaseStudy,
-): string | number {
-  const colNameLower = col.name.toLowerCase();
-  const industryProfile = context.industry && context.industry !== 'Acak'
-    ? INDUSTRY_PROFILES[context.industry]
-    : undefined;
-  const isIdentifier = /(^|[_\s])(kode|id|sku|no|nomor)([_\s]|$)|^(kode|id|sku|no|nomor)/i.test(col.name);
-  const industryValues = getIndustryColumnValues(col.name, context.industry);
-
-  if (col.type === 'enum' && col.values && col.values.length > 0) {
-    return faker.helpers.arrayElement(col.values);
-  }
-
-  if (industryProfile && industryValues && col.type !== 'date' && col.type !== 'int' && col.type !== 'number' && col.type !== 'currency') {
-    return faker.helpers.arrayElement(industryValues);
-  }
-
-  // Number / Currency / Int
-  if (col.type === 'int' || col.type === 'number' || col.type === 'currency') {
-    let min = 1;
-    let max = 100;
-    let hasValidRange = false;
-    if (col.range && Array.isArray(col.range)) {
-      const rangeMin = Number(col.range[0]);
-      const rangeMax = Number(col.range[1]);
-      if (
-        Number.isSafeInteger(rangeMin) &&
-        Number.isSafeInteger(rangeMax) &&
-        rangeMin <= rangeMax
-      ) {
-        min = rangeMin;
-        max = rangeMax;
-        hasValidRange = true;
-      }
-    }
-    if (!hasValidRange && (col.type === 'currency' || colNameLower.includes('harga') || colNameLower.includes('nominal'))) {
-      min = 25000;
-      max = 2500000;
-    } else if (!hasValidRange && (colNameLower.includes('qty') || colNameLower.includes('jumlah'))) {
-      min = 1;
-      max = 50;
-    }
-
-    const val = faker.number.int({ min, max });
-    if (col.type === 'currency') {
-      return Math.round(val / 1000) * 1000;
-    }
-    return val;
-  }
-
-  // Date
-  if (col.type === 'date') {
-    let fromDate = new Date('2026-01-01');
-    let toDate = new Date('2026-03-31');
-
-    if (col.range && Array.isArray(col.range) && col.range.length === 2) {
-      const rangeStart = new Date(String(col.range[0]));
-      const rangeEnd = new Date(String(col.range[1]));
-      if (
-        Number.isFinite(rangeStart.getTime()) &&
-        Number.isFinite(rangeEnd.getTime()) &&
-        rangeStart <= rangeEnd
-      ) {
-        fromDate = rangeStart;
-        toDate = rangeEnd;
-      }
-    }
-
-    const d = faker.date.between({ from: fromDate, to: toDate });
-    const yyyy = d.getUTCFullYear();
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  }
-
-  // Text heuristics based on column name
-  if (colNameLower.includes('no') || colNameLower.includes('id') || colNameLower.includes('kode') || colNameLower.includes('invoice')) {
-    const prefix = colNameLower.includes('inv') ? 'INV' : colNameLower.includes('po') ? 'PO' : colNameLower.includes('so') ? 'SO' : 'TRX';
-    return `${prefix}-${2026}-${String(rowIndex + 1).padStart(4, '0')}`;
-  }
-
-  if (colNameLower.includes('vendor') || colNameLower.includes('supplier') || colNameLower.includes('pemasok') || colNameLower.includes('perusahaan')) {
-    return faker.company.name();
-  }
-
-  if (colNameLower.includes('pelanggan') || colNameLower.includes('customer') || colNameLower.includes('klien') || colNameLower.includes('nasabah')) {
-    return faker.company.name();
-  }
-
-  if (colNameLower.includes('nama') || colNameLower.includes('pegawai') || colNameLower.includes('karyawan') || colNameLower.includes('mekanik')) {
-    return faker.person.fullName();
-  }
-
-  if (colNameLower.includes('alamat') || colNameLower.includes('address')) {
-    return faker.location.streetAddress();
-  }
-
-  if (colNameLower.includes('telepon') || colNameLower.includes('phone') || colNameLower.includes('hp') || colNameLower.includes('kontak')) {
-    return faker.phone.number('08##########');
-  }
-
-  if (colNameLower.includes('email')) {
-    return faker.internet.email();
-  }
-
-  if (colNameLower.includes('status') || colNameLower.includes('kondisi')) {
-    return faker.helpers.arrayElement(['Selesai', 'Diproses', 'Pending', 'Batal', 'Draft']);
-  }
-
-  if (colNameLower.includes('metode') || colNameLower.includes('pembayaran') || colNameLower.includes('payment')) {
-    return faker.helpers.arrayElement(['Transfer Bank', 'Tunai', 'Kartu Kredit', 'E-Wallet', 'Cek']);
-  }
-
-  if (colNameLower.includes('bank') || colNameLower.includes('rekening')) {
-    return faker.helpers.arrayElement(['BCA', 'Mandiri', 'BNI', 'BRI', 'Jago', 'Dana']);
-  }
-
-  if (colNameLower.includes('departemen') || colNameLower.includes('divisi') || colNameLower.includes('unit')) {
-    return faker.helpers.arrayElement(['Finance', 'HRD', 'Operations', 'Sales', 'Marketing', 'IT']);
-  }
-
-  if (colNameLower.includes('jabatan') || colNameLower.includes('posisi')) {
-    return faker.helpers.arrayElement(['Manager', 'Supervisor', 'Staff', 'Lead', 'Specialist']);
-  }
-
-  if (!isIdentifier && (colNameLower.includes('barang') || colNameLower.includes('produk') || colNameLower.includes('item'))) {
-    return industryProfile
-      ? faker.helpers.arrayElement(industryProfile.products)
-      : faker.commerce.productName();
-  }
-
-  if (colNameLower.includes('kategori') || colNameLower.includes('jenis') || colNameLower.includes('tipe')) {
-    return industryProfile
-      ? faker.helpers.arrayElement(industryProfile.categories)
-      : faker.commerce.department();
-  }
-
-  if (colNameLower.includes('kota') || colNameLower.includes('wilayah') || colNameLower.includes('cabang')) {
-    return faker.helpers.arrayElement(['Jakarta', 'Bandung', 'Surabaya', 'Semarang', 'Medan', 'Makassar']);
-  }
-
-  if (colNameLower.includes('proyek') || colNameLower.includes('project')) {
-    return faker.helpers.arrayElement(['Renovasi Gedung', 'Pembangunan Jalan', 'Pemasangan Jaringan', 'Pengadaan ATK', 'Audit Internal']);
-  }
-
-  if (colNameLower.includes('keterangan') || colNameLower.includes('catatan') || colNameLower.includes('note')) {
-    return faker.helpers.arrayElement(['Lengkap', 'Perlu follow-up', 'Urgent', 'Normal', 'Belum dikonfirmasi']);
-  }
-
-  // Time columns (Jam, Waktu, etc.)
-  if (colNameLower.includes('jam') || colNameLower.includes('waktu') || colNameLower.includes('time')) {
-    const hour = faker.number.int({ min: 7, max: 18 });
-    const minute = faker.helpers.arrayElement([0, 15, 30, 45]);
-    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-  }
-
-  // Phone number patterns
-  if (colNameLower.includes('tel') || colNameLower.includes('fax')) {
-    return `021-${faker.number.int({ min: 1000000, max: 9999999 })}`;
-  }
-
-  // Default fallback with Indonesian words instead of Latin
-  return faker.helpers.arrayElement(['Aktif', 'Proses', 'Selesai', 'Tersedia', 'Habis']);
+  return {
+    rows,
+    // Dataset kanonik yang disimpan: kolom sudah di-resolve ke registry tertutup
+    // dan jebakan tercatat, sehingga UI/export/perpustakaan rumus memakai data yang sama.
+    dataset: DatasetSchema.parse({
+      sheetName: context.dataset.sheetName ?? 'Data_Admin',
+      rows: rowCount,
+      columns,
+      traps,
+    }),
+    traps,
+  };
 }
 
 /**
- * Injects deliberate data traps for realistic data-cleaning practice:
- * 1. Leading/trailing spaces on string columns (e.g. " ATK01 ")
- * 2. Text dates with single quote / unformatted string
- * 3. Numbers stored as text (e.g. '15000)
- * 4. Empty / null cells
- * 5. Duplicate rows (2-3 duplicates)
+ * Membangkitkan baris dataset. Selalu memakai `buildDataset` sehingga baris yang
+ * divalidasi sama dengan yang dipakai prompt, UI, dan perhitungan kunci jawaban.
  */
-function injectDataTraps(rows: DataRow[], columns: DatasetColumn[], _seed: number) {
-  const textCols = columns.filter((c) => c.type === 'text' || c.type === 'enum');
-  const numCols = columns.filter((c) => c.type === 'int' || c.type === 'number' || c.type === 'currency');
-  const dateCols = columns.filter((c) => c.type === 'date');
+export function generateDatasetRows(context: DatasetGenerationContext | CaseStudy): DataRow[] {
+  return buildDataset(context).rows;
+}
 
-  // 1. Spasi berlebih pada text columns
-  if (textCols.length > 0) {
-    const codeColumn = textCols.find((column) => /(kode|code|sku)/i.test(column.name));
-    const colName = (codeColumn ?? textCols[0]).name;
-    const targets = [5, 12, 28, 45];
-    for (const idx of targets) {
-      if (rows[idx] && rows[idx][colName]) {
-        rows[idx][colName] = `  ${rows[idx][colName]} `;
-      }
+/** Kolom turunan (derived) dan dateAfter dihitung setelah kolom dasarnya siap. */
+function orderColumns(columns: DatasetColumn[]): DatasetColumn[] {
+  const rank = (column: DatasetColumn) => (column.type === 'derived' ? 2 : column.type === 'dateAfter' ? 1 : 0);
+  return [...columns].sort((a, b) => rank(a) - rank(b));
+}
+
+function generateCellValue(
+  column: DatasetColumn,
+  rowIndex: number,
+  faker: Faker,
+  row: DataRow,
+): string | number {
+  switch (column.type) {
+    case 'time':
+      return generateTime(column.name, faker);
+    case 'integer':
+      return faker.number.int({ min: Math.round(column.min ?? 1), max: Math.round(column.max ?? 100) });
+    case 'decimal': {
+      const min = column.min ?? 0;
+      const max = column.max ?? 1000;
+      const decimals = column.decimals ?? 2;
+      return Number(faker.number.float({ min, max, fractionDigits: decimals }).toFixed(decimals));
     }
-  }
-
-  // 2. Angka tersimpan sebagai teks
-  if (numCols.length > 0) {
-    const colName = numCols[0].name;
-    const targets = [8, 22, 39];
-    for (const idx of targets) {
-      if (rows[idx] && rows[idx][colName] !== null) {
-        rows[idx][colName] = String(rows[idx][colName]);
-      }
+    case 'currency': {
+      const min = column.min ?? 1000;
+      const max = column.max ?? 5_000_000;
+      return Math.round(faker.number.int({ min, max }) / 1000) * 1000;
     }
-  }
-
-  // 3. Tanggal bertipe teks atau variasi separator
-  if (dateCols.length > 0) {
-    const colName = dateCols[0].name;
-    const targets = [7, 19, 31];
-    for (const idx of targets) {
-      if (rows[idx] && rows[idx][colName]) {
-        const dStr = String(rows[idx][colName]);
-        rows[idx][colName] = dStr.replace(/-/g, '/'); // "2026/02/15" text variation
-      }
+    case 'date': {
+      const from = new Date(`${column.from ?? '2026-01-01'}T00:00:00.000Z`);
+      const to = new Date(`${column.to ?? '2026-12-31'}T00:00:00.000Z`);
+      return toIsoDate(faker.date.between({ from, to }));
     }
-  }
-
-  // 4. Sel kosong (Null/blank)
-  if (numCols.length > 1 && rows.length > 25) {
-    const colName = numCols[1].name;
-    rows[14][colName] = '';
-    rows[27][colName] = '';
-  }
-
-  // 5. Duplikat 2 baris
-  if (rows.length > 30) {
-    rows[20] = { ...rows[10] };
-    rows[35] = { ...rows[15] };
+    case 'dateAfter': {
+      const base = row[column.after ?? ''];
+      const baseDate = typeof base === 'string' ? new Date(`${base}T00:00:00.000Z`) : new Date('2026-01-01T00:00:00.000Z');
+      const offsetDays = faker.number.int({ min: 30, max: 400 });
+      return toIsoDate(new Date(baseDate.getTime() + offsetDays * 86_400_000));
+    }
+    case 'id':
+      return formatIdPattern(column.pattern ?? 'TRX-2026-####', rowIndex);
+    case 'name':
+      return faker.person.fullName();
+    case 'category': {
+      const values = column.values && column.values.length > 0 ? column.values : ['Umum', 'Prioritas'];
+      return faker.helpers.arrayElement(values);
+    }
+    case 'derived':
+      return evaluateExpression(column.expression ?? '0', row);
+    case 'text': {
+      const dictionary = dictionaryForName(column.name, column.dictionary);
+      return faker.helpers.arrayElement(dictionary);
+    }
+    default: {
+      // Tidak akan tercapai: resolveDatasetColumns sudah menolak tipe tak dikenal.
+      throw new Error(`Tipe kolom "${String((column as DatasetColumn).type)}" pada kolom "${column.name}" tidak didukung.`);
+    }
   }
 }
+
+function generateTime(name: string, faker: Faker): string {
+  const normalized = normalizeColumnName(name);
+  const isEnd = /(pulang|keluar|selesai|akhir|istirahat)/.test(normalized);
+  if (isEnd) {
+    // 14:00 - 19:30
+    return minutesToTime(faker.number.int({ min: 840, max: 1170 }) - (faker.number.int({ min: 0, max: 3 }) * 5));
+  }
+  // 06:30 - 09:30
+  return minutesToTime(faker.number.int({ min: 390, max: 570 }) - (faker.number.int({ min: 0, max: 3 }) * 5));
+}
+
+function toIsoDate(date: Date): string {
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatIdPattern(pattern: string, rowIndex: number): string {
+  const digits = String(rowIndex + 1).padStart(4, '0');
+  let cursor = 0;
+  return pattern.replace(/#+/g, (match) => {
+    const slice = digits.slice(Math.min(cursor, Math.max(0, digits.length - match.length)));
+    cursor += match.length;
+    return slice.padStart(match.length, '0');
+  });
+}
+
+function evaluateExpression(expression: string, row: DataRow): number {
+  const tokens = expression.match(/[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[+\-*/().]/g) ?? [];
+  let position = 0;
+  const peek = () => tokens[position];
+  const next = () => tokens[position++];
+
+  const parseFactor = (): number => {
+    const token = next();
+    if (token === '(') {
+      const value = parseExpression();
+      if (peek() === ')') next();
+      return value;
+    }
+    if (token === '-') return -parseFactor();
+    if (token === undefined) return 0;
+    if (/^\d/.test(token)) return Number(token);
+    const cell = row[token];
+    if (typeof cell === 'number') return cell;
+    const numeric = Number(cell ?? 0);
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+  const parseTerm = (): number => {
+    let value = parseFactor();
+    while (peek() === '*' || peek() === '/') {
+      const operator = next();
+      const right = parseFactor();
+      value = operator === '*' ? value * right : right === 0 ? 0 : value / right;
+    }
+    return value;
+  };
+  const parseExpression = (): number => {
+    let value = parseTerm();
+    while (peek() === '+' || peek() === '-') {
+      const operator = next();
+      const right = parseTerm();
+      value = operator === '+' ? value + right : value - right;
+    }
+    return value;
+  };
+
+  const result = parseExpression();
+  return Number.isFinite(result) ? result : 0;
+}
+
+/** Aturan antar kolom yang harus selalu benar. */
+function applyRowRules(columns: DatasetColumn[], row: DataRow): void {
+  const startColumn = columns.find((column) => column.type === 'time' && /(masuk|datang|mulai)/.test(normalizeColumnName(column.name)));
+  const endColumn = columns.find((column) => column.type === 'time' && /(pulang|keluar|selesai|akhir)/.test(normalizeColumnName(column.name)));
+  if (startColumn && endColumn) {
+    const start = String(row[startColumn.name] ?? '08:00');
+    const end = String(row[endColumn.name] ?? '17:00');
+    const startMinutes = isTimeLike(start) ? timeToMinutes(start) : 480;
+    const endMinutes = isTimeLike(end) ? timeToMinutes(end) : 1020;
+    if (endMinutes <= startMinutes) {
+      row[endColumn.name] = minutesToTime(startMinutes + 480);
+    }
+  }
+
+  // Stok tidak boleh negatif setelah pengurangan.
+  const opening = columns.find((column) => isNumericType(column.type) && /^(stok|saldo|persediaan)_?awal/.test(normalizeColumnName(column.name)));
+  const incoming = columns.find((column) => isNumericType(column.type) && /^(stok|saldo|persediaan)_?masuk/.test(normalizeColumnName(column.name)));
+  const outgoing = columns.find((column) => isNumericType(column.type) && /^(stok|saldo|persediaan)_?keluar/.test(normalizeColumnName(column.name)));
+  if (opening && incoming && outgoing) {
+    const available = Number(row[opening.name] ?? 0) + Number(row[incoming.name] ?? 0);
+    if (Number(row[outgoing.name] ?? 0) > available) {
+      row[outgoing.name] = Math.max(0, Math.floor(available / 2));
+    }
+  }
+
+  // Kolom turunan dihitung ulang agar konsisten dengan nilai akhir kolom dasar.
+  for (const column of columns) {
+    if (column.type === 'derived') {
+      row[column.name] = evaluateExpression(column.expression ?? '0', row);
+    }
+  }
+}
+
+function isTimeLike(value: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+// ---------------------------------------------------------------------------
+// Jebakan data (traps) yang disengaja
+// ---------------------------------------------------------------------------
+
+function trapRandom(seed: string, salt: string): number {
+  return cyrb53(`${seed}:${salt}`);
+}
+
+function pickRows(seed: string, salt: string, rowCount: number, count: number, startRow = 6): number[] {
+  const rows = new Set<number>();
+  let cursor = 0;
+  while (rows.size < count && rows.size < rowCount - startRow) {
+    const candidate = startRow + (trapRandom(seed, `${salt}:${cursor}`) % (rowCount - startRow));
+    rows.add(candidate);
+    cursor += 1;
+  }
+  return [...rows].sort((a, b) => a - b);
+}
+
+/**
+ * Menyusun rencana jebakan secara deterministik dari seed.
+ * Hanya level middle/advance yang mendapat jebakan.
+ */
+export function planTraps(
+  columns: DatasetColumn[],
+  seed: string,
+  level: Level,
+  rowCount: number,
+): DatasetTrap[] {
+  if (level === 'easy') return [];
+
+  const protectedNames = new Set<string>();
+  for (const column of columns) {
+    if (column.type === 'derived' && column.expression) {
+      for (const token of column.expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []) protectedNames.add(token);
+    }
+    if (column.type === 'dateAfter' && column.after) protectedNames.add(column.after);
+    // Kolom waktu dilindungi agar aturan Jam_Pulang > Jam_Masuk tetap valid.
+    if (column.type === 'time') protectedNames.add(column.name);
+  }
+
+  const usedColumns = new Set<string>();
+  const takeColumn = (predicate: (column: DatasetColumn) => boolean): DatasetColumn | undefined => {
+    const column = columns.find((candidate) =>
+      predicate(candidate) && !protectedNames.has(candidate.name) && !usedColumns.has(candidate.name),
+    );
+    if (column) usedColumns.add(column.name);
+    return column;
+  };
+
+  const traps: DatasetTrap[] = [];
+
+  const numericColumn = takeColumn((column) => isNumericType(column.type));
+  if (numericColumn) {
+    traps.push({
+      column: numericColumn.name,
+      kind: 'number-as-text',
+      rows: pickRows(seed, 'number-as-text', rowCount, 2),
+    });
+  }
+
+  const blankColumn = takeColumn((column) => column.type !== 'derived' && column.type !== 'dateAfter');
+  if (blankColumn) {
+    traps.push({
+      column: blankColumn.name,
+      kind: 'blank-cell',
+      rows: pickRows(seed, 'blank-cell', rowCount, 2, 10),
+    });
+  }
+
+  const dateColumn = takeColumn((column) => column.type === 'date');
+  if (dateColumn) {
+    traps.push({
+      column: dateColumn.name,
+      kind: 'date-slash',
+      rows: pickRows(seed, 'date-slash', rowCount, 3),
+    });
+  }
+
+  const textColumn = takeColumn((column) =>
+    column.type === 'text' || column.type === 'id' || column.type === 'category' || column.type === 'name',
+  );
+  if (textColumn) {
+    traps.push({
+      column: textColumn.name,
+      kind: 'extra-space',
+      rows: pickRows(seed, 'extra-space', rowCount, 4, 12),
+    });
+  }
+
+  return traps;
+}
+
+function applyTraps(rows: DataRow[], traps: DatasetTrap[]): void {
+  for (const trap of traps) {
+    for (const rowIndex of trap.rows) {
+      const row = rows[rowIndex];
+      if (!row || !(trap.column in row)) continue;
+      const value = row[trap.column];
+      switch (trap.kind) {
+        case 'number-as-text':
+          if (typeof value === 'number') row[trap.column] = String(value);
+          break;
+        case 'blank-cell':
+          row[trap.column] = '';
+          break;
+        case 'date-slash':
+          if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            row[trap.column] = value.replace(/-/g, '/');
+          }
+          break;
+        case 'extra-space':
+          if (typeof value === 'string' && value.trim()) row[trap.column] = ` ${value} `;
+          break;
+        default:
+          break;
+      }
+    }
+  }
+}
+
+export type { DatasetTrapKind };

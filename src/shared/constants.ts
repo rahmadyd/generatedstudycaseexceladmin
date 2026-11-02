@@ -1,5 +1,6 @@
 import { INDUSTRY_OPTIONS, Industry, Level, ExcelVersion } from './schema';
 import { GENERATION_CONFIG } from './generation-config';
+import { LEVEL_RULES } from './level-rules';
 
 export const ADMIN_ROLES = [
   { id: 'Penjualan', label: 'Admin Penjualan', desc: 'Order, pelanggan, penjualan, dan piutang' },
@@ -57,22 +58,22 @@ export const LEVEL_CONFIG: Record<
     label: 'Easy',
     badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800',
     description: 'Fokus pada rumus dasar, kalkulasi total, rata-rata, logika sederhana, dan formatting.',
-    recommended: ['SUM', 'AVERAGE', 'COUNT', 'MIN', 'MAX', 'IF', 'SORT', 'FILTER (Tabel)'],
-    forbidden: ['VLOOKUP', 'XLOOKUP', 'INDEX', 'MATCH', 'SUMIF', 'SUMIFS', 'COUNTIF', 'COUNTIFS', 'AVERAGEIF', 'AVERAGEIFS', 'SUBTOTAL', 'Pivot Table', 'Macro/VBA'],
+    recommended: LEVEL_RULES.easy.allowedFunctions,
+    forbidden: LEVEL_RULES.easy.forbiddenFunctions,
   },
   middle: {
     label: 'Middle',
     badgeColor: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800',
     description: 'Lookup data lintas tabel, rekap bersyarat, manipulasi teks, dan validasi data.',
-    recommended: ['VLOOKUP', 'XLOOKUP', 'SUMIF', 'SUMIFS', 'COUNTIF', 'COUNTIFS', 'IFERROR', 'TEXT', 'LEFT', 'RIGHT', 'MID', 'Data Validation'],
-    forbidden: ['Pivot Table', 'Macro/VBA', 'Power Query'],
+    recommended: LEVEL_RULES.middle.allowedFunctions,
+    forbidden: LEVEL_RULES.middle.forbiddenFunctions,
   },
   advance: {
     label: 'Advance',
     badgeColor: 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800',
     description: 'INDEX-MATCH multi-kriteria, SUMPRODUCT, Pivot Table dinamis, Conditional Formatting rumus.',
-    recommended: ['INDEX-MATCH', 'SUMPRODUCT', 'Pivot Table', 'Conditional Formatting Rumus', 'Named Range', 'Nested IF/IFS'],
-    forbidden: ['Macro/VBA'],
+    recommended: LEVEL_RULES.advance.allowedFunctions,
+    forbidden: LEVEL_RULES.advance.forbiddenFunctions,
   },
 };
 

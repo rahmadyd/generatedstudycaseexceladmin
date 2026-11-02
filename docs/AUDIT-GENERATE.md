@@ -102,3 +102,20 @@ Jangan menambahkan API key, header Authorization, atau isi prompt ke log.
 - Jika schema atau pemeriksaan keselarasan role/industri/tugas/rumus gagal, aplikasi kini menyertakan daftar masalah dan peta kolom pada prompt perbaikan, lalu meminta Groq membuat ulang kasus sampai dua kali. Tidak ada fallback ke kasus statis lokal; bila semua percobaan gagal, error validasi ditampilkan.
 - Semua prompt generate, prompt fallback serverless, prompt kunci bertahap, dan prompt regenerate sekarang menjelaskan format metadata dataset dengan tipe yang konsisten. Server menormalisasi range angka/tanggal yang valid dan mengabaikan metadata range opsional yang salah tipe sebelum validasi; range tanggal harus ISO valid dan semua range harus berurutan.
 - Halaman baru tidak menampilkan contoh studi kasus lokal. Baris data dataset tetap dibangkitkan secara deterministik di browser dari skema dataset yang dihasilkan AI.
+
+## Integritas dataset: registry tipe tertutup + validasi wajib (2026-11)
+
+Insiden: kolom `Jam_Masuk`/`Jam_Pulang` terisi kata Latin acak (fallback `faker.lorem` untuk kolom tak dikenal) dan kolom `Cuti` menyimpan angka sebagai teks. Perbaikan menyeluruh:
+
+- **Registry tipe kolom tertutup** di `src/lib/column-types.ts`: `time`, `integer`, `decimal`, `currency`, `date`, `dateAfter`, `name`, `category`, `id`, `text`, `derived`. Skema dataset dari AI/template hanya boleh memakai tipe ini (divalidasi Zod). Tidak ada lagi tipe bebas.
+- **Fallback teks acak dihapus.** `generateCellValue` tidak lagi punya jalur `faker.lorem`; kolom tak dikenal melempar `UnknownColumnTypeError` yang menyebut nama kolomnya (hard error, HTTP 422 `UNKNOWN_COLUMN_TYPE`).
+- **Pemetaan nama kolom umum** (`COLUMN_NAME_RULES`) menjamin `Jam_Masuk`/`Jam_Pulang` → `time`, `Cuti` → `integer`, `Stok_Akhir` → `derived`, `Tanggal_Kedaluwarsa` → `dateAfter`, `Gudang`/`Kategori`/`Produk` → `category`, dll.
+- **Faker locale `id_ID`** (`new Faker({ locale: [id_ID, en] })`) dengan seed unik per generate (`cyrb53`).
+- **`validateDataset(dataset, rows)`** (`src/shared/dataset-validation.ts`) dijalankan sebelum dataset dipakai prompt, UI, atau export: tipe sel (angka harus `typeof number`, bukan string), format jam `HH:mm`, rentang numerik, tanggal ISO, aturan antar kolom (`Jam_Pulang > Jam_Masuk`, `Stok_Akhir = Stok_Awal + Stok_Masuk - Stok_Keluar`, `Tanggal_Kedaluwarsa > Tanggal`, kolom `derived`), kata lorem Latin, dan sel kosong tak sengaja.
+- **Jebakan data (traps) tetap ada** sebagai tantangan, tetapi sekarang **terdeklarasi + deterministik** (`dataset.traps`). `validateDataset` hanya meloloskan penyimpangan yang benar-benar terdaftar sebagai jebakan; penyimpangan lain dianggap error.
+- **Regenerate dengan seed baru maksimal 3×** (`buildValidatedDataset`, `DATASET_VALIDATION_MAX_ATTEMPTS`). Jika tetap gagal, `DatasetValidationError` (HTTP 422 `DATASET_VALIDATION_ERROR`) ditampilkan di UI. Dataset yang gagal validasi tidak pernah ditampilkan.
+- **Satu sumber kebenaran:** prompt-repair, UI, export, dan perhitungan kunci jawaban memakai baris + kolom kanonik + seed yang sama (`buildDataset`/`buildValidatedDataset`).
+- **Export CSV/XLSX** menulis sel bertipe: angka sebagai `number` (`t: 'n'`), tanggal sebagai `Date` (`t: 'd'`, format `yyyy-mm-dd`), jam konsisten `HH:mm`; sel jebakan yang terdeklarasi dibiarkan apa adanya.
+- **Perbaikan bug** `columnTypeToCellKind`: kolom `derived` kini dipetakan ke sel `number` (sebelumnya keliru `text` sehingga validasi menolak `Stok_Akhir`).
+- **Tes Vitest** (`npm test`, `tests/dataset-validation.test.ts`): matriks **300 seed** di semua level × industri × variasi skema → `validateDataset` selalu lolos dan tidak ada kata lorem; kolom tak dikenal gagal dengan pesan yang menyebut nama kolom; determinisme seed; dan `validateDataset` menolak angka-sebagai-teks serta lorem yang tidak dideklarasikan.
+

@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Sparkles, Sliders, RefreshCw, AlertCircle, Info } from 'lucide-react';
 import { Level, ExcelVersion, FormulaStyle, GenerateRequest, INDUSTRY_OPTIONS, Industry, TaskCountMode } from '@/shared/schema';
 import { ADMIN_ROLES, getRecommendedAdminRole, getRecommendedTaskCount, LEVEL_CONFIG } from '@/shared/constants';
+import { LEVEL_RULES } from '@/shared/level-rules';
 import {
   GENERATION_CONFIG,
   getTaskCountOptions,
@@ -166,6 +167,9 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
                     {isSelected && <span className="w-2 h-2 rounded-full bg-emerald-600" />}
                   </div>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2">{cfg.description}</p>
+                  <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+                    Jenis tugas: {LEVEL_RULES[lvl].taskKinds.map((kind) => kind.replace(/-/g, ' ')).join(', ')}
+                  </p>
                 </button>
               );
             })}

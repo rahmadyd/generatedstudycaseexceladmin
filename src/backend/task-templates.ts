@@ -1,4 +1,5 @@
-import { AnswerKeyItem, CaseStudy, DatasetColumn, DatasetSpec, Industry, Task } from '../shared/schema';
+import { AnswerKeyItem, CaseStudy, DatasetColumn, Industry, Task } from '../shared/schema';
+import { ColumnInput, DatasetInput } from '@/lib/column-types';
 import { DataRow } from '../shared/dataset-generator';
 import { LEVEL_RULES, TaskKind } from '../shared/level-rules';
 import { getIndustryColumnValues, INDUSTRY_PROFILES } from '../shared/constants';
@@ -10,31 +11,33 @@ export interface DeterministicTaskSet {
 
 type TaskContext = Pick<CaseStudy, 'dataset' | 'level' | 'role' | 'excelVersion'>;
 
+const NUMERIC_COLUMN_TYPES: DatasetColumn['type'][] = ['integer', 'decimal', 'currency'];
+const KEY_COLUMN_TYPES: string[] = ['text', 'id', 'category'];
+
 export function ensureTemplateDataset(
-  dataset: DatasetSpec,
+  dataset: DatasetInput,
   level: CaseStudy['level'],
   role: string,
   industry?: Industry,
-): DatasetSpec {
-  const columns = [...dataset.columns];
-  const addColumn = (column: DatasetColumn) => {
+): DatasetInput {
+  const columns: ColumnInput[] = [...dataset.columns];
+  const addColumn = (column: ColumnInput) => {
     if (!columns.some((existing) => existing.name.toLocaleLowerCase('id') === column.name.toLocaleLowerCase('id'))) {
       columns.push(column);
     }
   };
-  const numericTypes: DatasetColumn['type'][] = ['number', 'int', 'currency'];
-  if (!columns.some((column) => numericTypes.includes(column.type))) {
-    addColumn({ name: 'Nilai_Administrasi', type: 'currency', range: [1000, 1000000] });
+  if (!columns.some((column) => NUMERIC_COLUMN_TYPES.includes(column.type as DatasetColumn['type']))) {
+    addColumn({ name: 'Nilai_Administrasi', type: 'currency', min: 1000, max: 1000000 });
   }
   if (level !== 'easy') {
     const profile = industry && industry !== 'Acak' ? INDUSTRY_PROFILES[industry] : undefined;
     const industryCategoryExists = columns.some((column) =>
-      column.type === 'enum' && Boolean(getIndustryColumnValues(column.name, industry)),
+      column.type === 'category' && Boolean(getIndustryColumnValues(column.name, industry)),
     );
     if (!industryCategoryExists) {
       addColumn({
         name: 'Kategori_Operasional',
-        type: 'enum',
+        type: 'category',
         values: profile?.categories.length ? profile.categories : ['Umum', 'Prioritas'],
       });
     }
@@ -42,32 +45,36 @@ export function ensureTemplateDataset(
       addColumn({
         name: 'Tanggal_Transaksi',
         type: 'date',
-        range: ['2026-01-01', '2026-03-31'],
+        from: '2026-01-01',
+        to: '2026-03-31',
       });
     }
     const keyColumnExists = columns.some((column) => /(kode|sku|^id|nomor|produk|barang|item)/i.test(column.name) &&
-      ['text', 'enum'].includes(column.type));
-    const lookupExists = keyColumnExists && columns.some((column) => numericTypes.includes(column.type) &&
+      KEY_COLUMN_TYPES.includes(column.type ?? ''));
+    const lookupExists = keyColumnExists && columns.some((column) =>
+      NUMERIC_COLUMN_TYPES.includes(column.type as DatasetColumn['type']) &&
       columns.indexOf(column) > columns.findIndex((candidate) =>
         /(kode|sku|^id|nomor|produk|barang|item)/i.test(candidate.name) &&
-        ['text', 'enum'].includes(candidate.type),
+        KEY_COLUMN_TYPES.includes(candidate.type ?? ''),
       ));
     if (!lookupExists) {
       addColumn({
         name: 'Kode_Referensi',
-        type: 'text',
+        type: 'id',
+        pattern: 'REF-2026-####',
       });
       addColumn({
         name: 'Nilai_Referensi',
         type: 'currency',
-        range: [1000, 1000000],
+        min: 1000,
+        max: 1000000,
       });
     }
   }
   if (/gudang|inventory/i.test(role)) {
-    addColumn({ name: 'Stok_Awal', type: 'int', range: [20, 200] });
-    addColumn({ name: 'Stok_Masuk', type: 'int', range: [0, 50] });
-    addColumn({ name: 'Stok_Keluar', type: 'int', range: [0, 40] });
+    addColumn({ name: 'Stok_Awal', type: 'integer', min: 20, max: 200 });
+    addColumn({ name: 'Stok_Masuk', type: 'integer', min: 0, max: 50 });
+    addColumn({ name: 'Stok_Keluar', type: 'integer', min: 0, max: 40 });
   }
   return { ...dataset, columns };
 }
@@ -248,12 +255,10 @@ function createNestedIf(
   rowIndex = 0,
 ): TemplateResult | undefined {
   if (!valueColumn || rowIndex >= rows.length) return undefined;
-  const maximum = valueColumn.range && typeof valueColumn.range[1] === 'number'
-    ? valueColumn.range[1]
-    : Math.max(...rows.map((row) => numericValue(row[valueColumn.name])));
-  const minimum = valueColumn.range && typeof valueColumn.range[0] === 'number'
-    ? valueColumn.range[0]
-    : Math.min(...rows.map((row) => numericValue(row[valueColumn.name])));
+  const maximum = valueColumn.max
+    ?? Math.max(...rows.map((row) => numericValue(row[valueColumn.name])));
+  const minimum = valueColumn.min
+    ?? Math.min(...rows.map((row) => numericValue(row[valueColumn.name])));
   const middle = Math.floor((maximum + minimum) / 2);
   const firstValue = numericValue(rows[rowIndex][valueColumn.name]);
   const label = firstValue >= maximum ? 'Tinggi' : firstValue >= middle ? 'Sedang' : 'Rendah';
@@ -492,19 +497,19 @@ export function buildDeterministicTasks(
 ): DeterministicTaskSet {
   const columns = caseStudy.dataset.columns;
   const numericColumns = columns.filter((column) =>
-    ['number', 'int', 'currency'].includes(column.type),
+    (NUMERIC_COLUMN_TYPES as string[]).includes(column.type),
   );
   const categoryColumn = columns.find((column) =>
-    column.type === 'enum' && (column.values?.length ?? 0) > 1,
-  ) ?? columns.find((column) => column.type === 'enum');
+    column.type === 'category' && (column.values?.length ?? 0) > 1,
+  ) ?? columns.find((column) => column.type === 'category');
   const dateColumn = columns.find((column) => column.type === 'date');
   const preferredValueColumn = numericColumns.find((column) => column.type === 'currency') ??
-    findColumn(columns, /(jumlah|qty|kuantitas|total|nilai|nominal|harga|biaya|stok|saldo|amount)/i, numericColumns.map((column) => column.type)) ??
+    findColumn(columns, /(jumlah|qty|kuantitas|total|nilai|nominal|harga|biaya|stok|saldo|amount)/i, NUMERIC_COLUMN_TYPES) ??
     numericColumns[0];
-  const openingColumn = findColumn(columns, /(stok|saldo|persediaan).*(awal|opening)|^(stok|saldo|persediaan)[ _-]?awal/i, ['number', 'int', 'currency']);
-  const incomingColumn = findColumn(columns, /(stok|qty|jumlah|barang|saldo|persediaan).*(masuk|terima|penerimaan|inbound)|^(masuk|penerimaan|inbound)/i, ['number', 'int', 'currency']);
-  const outgoingColumn = findColumn(columns, /(stok|qty|jumlah|barang|saldo|persediaan).*(keluar|pakai|pengeluaran|outbound)|^(keluar|pengeluaran|outbound)/i, ['number', 'int', 'currency']);
-  const keyColumn = findColumn(columns, /(kode|sku|id|nomor|produk|barang|item)/i, ['text', 'enum']);
+  const openingColumn = findColumn(columns, /(stok|saldo|persediaan).*(awal|opening)|^(stok|saldo|persediaan)[ _-]?awal/i, NUMERIC_COLUMN_TYPES);
+  const incomingColumn = findColumn(columns, /(stok|qty|jumlah|barang|saldo|persediaan).*(masuk|terima|penerimaan|inbound)|^(masuk|penerimaan|inbound)/i, NUMERIC_COLUMN_TYPES);
+  const outgoingColumn = findColumn(columns, /(stok|qty|jumlah|barang|saldo|persediaan).*(keluar|pakai|pengeluaran|outbound)|^(keluar|pengeluaran|outbound)/i, NUMERIC_COLUMN_TYPES);
+  const keyColumn = findColumn(columns, /(kode|sku|id|nomor|produk|barang|item)/i, ['text', 'id', 'category'] as DatasetColumn['type'][]);
   const lookupResultColumn = keyColumn
     ? numericColumns.find((column) => columns.indexOf(column) > columns.indexOf(keyColumn))
     : undefined;

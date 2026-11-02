@@ -1,6 +1,46 @@
 import * as XLSX from 'xlsx';
 import { CaseStudy } from '@/shared/schema';
+import { columnTypeToCellKind, isIsoDate } from '@/lib/column-types';
 import { DataRow } from './dataset-generator';
+
+type ExportCell = string | number | Date | null;
+
+/**
+ * Menyusun data sheet dengan tipe sel yang benar: angka sebagai number,
+ * tanggal sebagai Date (atau ISO untuk CSV), jam tetap string "HH:mm".
+ * Sel jebakan data yang dideklarasikan dipertahankan apa adanya agar tantangan
+ * pembersihan data tetap ada, bukan sumber campuran tipe yang tak sengaja.
+ */
+function buildDatasetAoa(caseStudy: CaseStudy, rows: DataRow[], datesAsDate = true): ExportCell[][] {
+  const columns = caseStudy.dataset.columns;
+  const trapCells = new Set<string>();
+  for (const trap of caseStudy.dataset.traps ?? []) {
+    for (const rowIndex of trap.rows) trapCells.add(`${trap.column}\u0000${rowIndex}`);
+  }
+  const header: ExportCell[] = columns.map((column) => column.name);
+  const body = rows.map((row, rowIndex) => columns.map<ExportCell>((column) => {
+    const value = row[column.name];
+    if (trapCells.has(`${column.name}\u0000${rowIndex}`)) return value ?? null;
+    if (value === null || value === undefined || value === '') return null;
+    const kind = columnTypeToCellKind(column.type);
+    if (kind === 'number') return typeof value === 'number' ? value : Number(value);
+    if (kind === 'date' && typeof value === 'string' && isIsoDate(value)) {
+      return datesAsDate ? new Date(`${value}T00:00:00.000Z`) : value;
+    }
+    return value;
+  }));
+  return [header, ...body];
+}
+
+function applyDateFormats(ws: XLSX.WorkSheet, caseStudy: CaseStudy, rowCount: number): void {
+  caseStudy.dataset.columns.forEach((column, columnIndex) => {
+    if (columnTypeToCellKind(column.type) !== 'date') return;
+    for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+      const cell = ws[XLSX.utils.encode_cell({ r: rowIndex + 1, c: columnIndex })];
+      if (cell) cell.z = 'yyyy-mm-dd';
+    }
+  });
+}
 
 /**
  * Builds a column-letter map from the dataset columns.
@@ -32,7 +72,8 @@ export function exportDatasetToXLSX(caseStudy: CaseStudy, rows: DataRow[]) {
   const columnMap = buildColumnMap(caseStudy.dataset.columns);
 
   const sheetName = (caseStudy.dataset.sheetName || 'Data_Admin').substring(0, 31);
-  const ws = XLSX.utils.json_to_sheet(rows);
+  const ws = XLSX.utils.aoa_to_sheet(buildDatasetAoa(caseStudy, rows));
+  applyDateFormats(ws, caseStudy, rows.length);
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
   // Always add a KUNCI_JAWABAN sheet with full context
@@ -83,9 +124,19 @@ function buildAnswerKeySheet(caseStudy: CaseStudy, columnMap: Record<string, str
 
   // Answer keys
   rows.push(['--- KUNCI JAWABAN ---']);
-  rows.push(['No Tugas', 'Formula', 'Penjelasan']);
+  rows.push(['No Tugas', 'Mode', 'Formula', 'Nilai Jawaban', 'Rubrik / Penjelasan']);
   for (const answer of caseStudy.answerKey) {
-    rows.push([`Tugas ${answer.task}`, answer.formula, answer.explanation || '']);
+    rows.push([
+      `Tugas ${answer.task}`,
+      answer.mode === 'rubric' ? 'Dinilai dengan rubrik' : 'Computed',
+      answer.formula ?? '',
+      typeof answer.expectedValue === 'boolean'
+        ? String(answer.expectedValue)
+        : answer.expectedValue ?? '',
+      answer.mode === 'rubric'
+        ? answer.rubricChecklist.map((item, index) => `${index + 1}. ${item}`).join('\n')
+        : answer.explanation || '',
+    ]);
   }
   rows.push(['']);
 
@@ -102,7 +153,7 @@ function buildAnswerKeySheet(caseStudy: CaseStudy, columnMap: Record<string, str
 }
 
 export function exportDatasetToCSV(caseStudy: CaseStudy, rows: DataRow[]) {
-  const ws = XLSX.utils.json_to_sheet(rows);
+  const ws = XLSX.utils.aoa_to_sheet(buildDatasetAoa(caseStudy, rows, false));
   const csvContent = XLSX.utils.sheet_to_csv(ws);
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

@@ -16,12 +16,15 @@ RULES
 - Make both the selected admin role and industry's context visible in the dataset schema itself: include at least one field relevant to the role and at least one concrete product, service, or category from the supplied industry profile. The scenario alone is not enough.
 - Use the supplied industry profile's product/service/category examples for realistic enum values. Keep every task criterion consistent with the final dataset headers and enum values.
 - The generated dataset schema is the only source-data table/sheet. Do not invent lookup tables or sheets.
-- Dataset column metadata must match its type: for `number`, `int`, and `currency`, `range` (if present) is exactly two whole JSON numbers `[min, max]` with `min <= max`; for `date`, it is exactly two real ISO dates `["YYYY-MM-DD", "YYYY-MM-DD"]` in chronological order. Never mix strings and numbers in a range. Omit `range` for `text` and `enum`. Use `values` only for `enum`, as a non-empty array of strings. Omit optional `values` or `range` when they do not apply.
-- Tasks, hints, and target results must describe the same work. Every criterion must match the final dataset schema. Formula tasks need one copyable formula concept; the formula answer and formula clues are generated in a separate sequential request after this case is validated.
+- Dataset column metadata must use ONLY these closed types: `time` (HH:mm), `integer`, `decimal`, `currency`, `date`, `name`, `category`, `id`, `text`, `derived`. For `integer`, `decimal`, and `currency`, provide `min` and `max` as whole JSON numbers with `min <= max`. For `date`, provide `from` and `to` as real ISO dates `"YYYY-MM-DD"` in chronological order. For `category`, provide `values` as a non-empty array of strings. For `id`, provide a `pattern` such as `"REF-2026-####"`. For `time`, provide no range. Never mix strings and numbers in `min`/`max`. Omit optional fields that do not apply.
+- Name data columns realistically (for example `Tanggal_Transaksi`, `Jam_Masuk`, `Jam_Pulang`, `Cuti`, `Qty`, `Harga`, `Status`, `Stok_Awal`, `Stok_Masuk`, `Stok_Keluar`). Time columns such as `Jam_Masuk` and `Jam_Pulang` MUST use type `time`. Never use generic names like `Column1` and never fill any cell with Lorem/Latin words.
+- Tasks, hints, and target results must describe the same work. Every criterion must match the final dataset schema. Formula tasks must provide the exact headers they use and a formula that can be executed against the generated dataset.
+- For Easy and Middle, return an empty `tasks` array: the application creates deterministic tasks and computes their answers from the seeded dataset.
+- For Advance, return exactly {{taskCount}} tasks. Each task must include `no`, `instruction`, `hint`, `targetResult`, `taskKind`, `answerMode`, `columnsUsed`, and either `formula` (computed) or `rubricChecklist` (rubric). `taskKind` must be allowed for the selected level. `columnsUsed` must contain exact dataset headers. Computed formulas must use only allowed functions, use A1 cell references on the single dataset sheet, and must be executable. Periodic tasks must include exact ISO start/end dates and `dateColumn`. Rubric tasks must include a concise checklist and expected output in `targetResult`.
 - Follow the formula policy and Excel version when describing tasks. Use the requested reference style.
 - Date and conditional requirements must be possible with the provided date, category, and numeric columns. Do not claim that filtering worksheet rows applies a formula criterion.
 - Use concrete industry-specific dataset headers and values, not generic labels alone. Choose fields and enum values appropriate to the industry's actual operations and selected admin responsibility; avoid reusing unrelated retail/sales structures across industries.
-- Return exactly {{taskCount}} numbered tasks. Do not generate formulas, formula clues, or answer keys in this phase.
+- Return exactly {{taskCount}} tasks for Advance, and no tasks for Easy/Middle. Do not generate answer keys; the application evaluates every computed formula against the same seeded dataset or builds a rubric checklist.
 - Keep each string concise and one line. Never claim fixed calculated values for randomly generated rows.
 - Keep JSON compact; no markdown or unused fields.
 
@@ -29,19 +32,25 @@ OUTPUT SHAPE
 {
   "title": "string",
   "scenario": "string",
-  "tasks": [
-    { "no": 1, "instruction": "string", "hint": "string", "targetResult": "string" }
-  ],
+  "tasks": [],
   "dataTraps": ["string"],
   "dataset": {
     "sheetName": "string",
     "rows": 150,
     "columns": [
-      { "name": "Tanggal_Transaksi", "type": "date", "range": ["2026-01-01", "2026-03-31"] },
-      { "name": "Qty", "type": "int", "range": [1, 100] },
-      { "name": "Harga", "type": "currency", "range": [10000, 5000000] },
-      { "name": "Status", "type": "enum", "values": ["Selesai", "Diproses"] },
+      { "name": "Tanggal_Transaksi", "type": "date", "from": "2026-01-01", "to": "2026-03-31" },
+      { "name": "Jam_Masuk", "type": "time" },
+      { "name": "Jam_Pulang", "type": "time" },
+      { "name": "Cuti", "type": "integer", "min": 0, "max": 12 },
+      { "name": "Qty", "type": "integer", "min": 1, "max": 100 },
+      { "name": "Harga", "type": "currency", "min": 10000, "max": 5000000 },
+      { "name": "Status", "type": "category", "values": ["Selesai", "Diproses"] },
+      { "name": "Kode_Referensi", "type": "id", "pattern": "REF-2026-####" },
       { "name": "Catatan", "type": "text" }
     ]
   }
 }
+
+For Advance, replace `tasks` with an array in this shape:
+{"no":1,"instruction":"string","hint":"string","targetResult":"string","taskKind":"calculation","answerMode":"computed","columnsUsed":["Qty"],"formula":"SUM(B2:B151)"}
+For a rubric task, set `answerMode` to `rubric` and provide `rubricChecklist` instead of `formula`.

@@ -227,10 +227,20 @@ export function exportKunciJawabanPDF(caseStudy: CaseStudy) {
 
   const answerRows = caseStudy.tasks.map((task) => {
     const keyItem = caseStudy.answerKey.find((a) => a.task === task.no);
-    const formula = keyItem
-      ? normalizeExcelFormulaLocale(keyItem.formula)
-      : 'Kunci jawaban belum tersedia';
-    const explanation = keyItem ? keyItem.explanation : 'Coba lengkapi kunci dari aplikasi.';
+    const formula = keyItem?.mode === 'rubric'
+      ? 'Dinilai dengan rubrik'
+      : keyItem?.formula
+        ? normalizeExcelFormulaLocale(keyItem.formula)
+        : 'Kunci jawaban belum tersedia';
+    const expectedValue = keyItem?.expectedValue !== undefined
+      ? `Nilai jawaban: ${String(keyItem.expectedValue)}`
+      : '';
+    const rubric = keyItem?.mode === 'rubric'
+      ? keyItem.rubricChecklist.map((item) => `- ${item}`).join('\n')
+      : '';
+    const explanation = keyItem
+      ? [keyItem.explanation, expectedValue, rubric].filter(Boolean).join('\n')
+      : 'Coba lengkapi kunci dari aplikasi.';
     return [
       `Tugas #${task.no}`,
       task.instruction,
