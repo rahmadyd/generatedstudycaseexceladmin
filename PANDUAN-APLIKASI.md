@@ -2,7 +2,7 @@
 
 ## Gambaran Umum
 
-Excel Admin Studio adalah aplikasi web untuk membuat latihan studi kasus Microsoft Excel yang relevan dengan pekerjaan administrasi. Pengguna memilih level, jenis pekerjaan admin, industri, versi Excel, dan opsi latihan; aplikasi kemudian meminta Groq membuat skenario, tugas, petunjuk, target, serta kunci jawaban.
+Excel Admin Studio adalah aplikasi web untuk membuat latihan studi kasus Microsoft Excel yang relevan dengan pekerjaan administrasi. Pengguna memilih level, jenis pekerjaan admin, industri, versi Excel, dan opsi latihan; aplikasi meminta Groq membuat soal dan dataset terlebih dahulu, lalu meminta clue formula dan kunci jawaban.
 
 Dataset dibuat oleh aplikasi berdasarkan skema kasus dan seed, bukan dihasilkan oleh model AI. Dengan seed yang sama, baris dataset dapat dibuat kembali secara konsisten di browser.
 
@@ -13,7 +13,7 @@ Dataset dibuat oleh aplikasi berdasarkan skema kasus dan seed, bukan dihasilkan 
 - **Easy** — rumus dasar, logika sederhana, pengurutan, dan filter.
 - **Middle** — rekap bersyarat, lookup, manipulasi teks, serta validasi data.
 - **Advance** — rumus multi-kriteria, analisis data, Pivot Table, dan pemformatan bersyarat.
-Untuk Advance, skenario/tugas dibuat terpisah dari kunci jawaban.
+Pembuatan soal dan dataset dipisahkan dari clue formula dan kunci jawaban dalam dua panggilan berurutan pada semua level agar setiap respons JSON lebih ringkas.
 
 Rumus yang disarankan dan dilarang disesuaikan dengan level. Pengguna juga dapat memilih target kompatibilitas Microsoft 365 atau Excel 2016/2019.
 
@@ -58,17 +58,18 @@ Kasus yang berhasil dibuat tersimpan di riwayat browser. Pengguna dapat membuka 
 - Aplikasi mengirim permintaan generate dari server ke endpoint Groq.
 - Provider menggunakan environment variable server **`GROQ_API_KEY`**. API key tidak perlu dimasukkan di browser.
 - Pengaturan API key browser yang lama sudah dihapus; saat aplikasi dibuka, key lama yang tersimpan di `localStorage` dibersihkan.
-- Skenario, tugas, schema dataset, dan kunci jawaban dihasilkan oleh AI. Aplikasi tidak memakai bank kasus atau template lokal sebagai hasil generate pengganti. Jika AI tetap menghasilkan output yang tidak selaras setelah satu kali perbaikan, aplikasi menampilkan error dan tidak menyajikan kasus lokal.
+- Soal, schema dataset, clue formula, dan kunci jawaban dihasilkan oleh AI dalam dua tahap berurutan. Aplikasi tidak memakai bank kasus atau template lokal sebagai hasil generate pengganti. Jika AI tetap menghasilkan output yang tidak valid/tidak selaras setelah satu kali perbaikan, aplikasi menampilkan error.
 - Baris-baris dataset diisi secara deterministik di browser berdasarkan schema kolom dari AI dan seed kasus; setiap klik generate baru mendapat seed UUID unik, sedangkan seed yang dibagikan tetap menghasilkan dataset yang sama.
 - Tema kasus dipilih dari daftar yang sesuai dengan bidang admin dan dibandingkan dengan tema pada riwayat lokal terbaru untuk mengurangi pengulangan.
 - Endpoint generate POST memakai `force-dynamic`, `revalidate = 0`, dan cache browser `no-store`.
-- Respons AI diminta dalam JSON mode dan field wajib yang hilang ditolak, bukan diisi dengan tugas atau rumus placeholder. Error generate, parse JSON, dan batas kuota ditampilkan tanpa mempertahankan kasus lama sebagai hasil baru.
+- Respons AI diminta dalam JSON mode; JSON diekstrak langsung atau dari batas object pertama/terakhir, lalu divalidasi dengan Zod. Field wajib yang hilang ditolak, bukan diisi dengan tugas/rumus placeholder. Error 400 JSON-validation, 401, 429, 5xx, dan parse JSON dibedakan di UI. Kasus lama dibersihkan saat generate dimulai.
+- Prompt meminta output strict JSON tanpa Markdown, string satu baris yang di-escape, dan formula jawaban tanpa `=`; aplikasi menambahkan `=` setelah validasi.
 - Model utama default adalah `llama-3.1-8b-instant`; model dapat dikonfigurasi melalui `GROQ_MODEL`.
 - `GROQ_FALLBACK_MODEL` dapat digunakan untuk menentukan model alternatif Groq. Sebaiknya berbeda dari model utama; jika tidak disetel, fallback dinonaktifkan.
 - Model dengan nama `gpt-oss` dikirim dengan `reasoning_effort: low`.
 - Jumlah tugas dibatasi per level untuk mengurangi ukuran respons: Easy 3–4, Middle 4–5, Advance 4–5.
 - OpenAI tidak digunakan sebagai provider atau fallback.
-- Jika model utama mengembalikan 429 atau 5xx dan `GROQ_FALLBACK_MODEL` berbeda, aplikasi mencoba model cadangan satu kali. Jika cadangan tetap gagal, error ditampilkan; aplikasi tidak mengulang fallback tanpa batas.
+- Untuk alur Generate, fallback model yang berbeda hanya dicoba satu kali pada respons 5xx; respons 429 langsung ditampilkan tanpa retry/fallback. Endpoint AI lain dapat memakai kebijakan fallback masing-masing. Jika fallback dijalankan tetapi tetap gagal, error ditampilkan.
 - Error 401 (key ditolak), 429 dari Groq (kuota/rate limit), 5xx (gangguan provider), dan JSON tidak valid memiliki pesan UI berbeda. Untuk 429, server mencatat status, `Retry-After`, dan header `x-ratelimit-*`; countdown hanya memakai estimasi reset dari header provider, bukan angka fallback.
 - 429 dari perlindungan aplikasi diberi pesan dan kode `APP_RATE_LIMITED`, terpisah dari `AI_RATE_LIMITED` milik Groq. Batas aplikasi adalah 15 permintaan Generate valid per menit per IP pada instance server; tidak ada jeda 5 detik atau cooldown UI setelah Generate sukses.
 - Untuk semua level, kegagalan generate ditampilkan di aplikasi. Jika kasus Advance berhasil dibuat tetapi tahap kunci gagal, kasus tetap tersedia dan kuncinya dapat dicoba ulang.

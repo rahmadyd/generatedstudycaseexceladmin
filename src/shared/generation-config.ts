@@ -16,9 +16,10 @@ export interface GenerationLevelConfig {
 
 export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
   easy: {
-    maxTokens: 1500,
-    repairMaxTokens: 1800,
+    maxTokens: 2000,
+    repairMaxTokens: 2400,
     regenerateMaxTokens: 800,
+    stagedAnswerKeyMaxTokens: 1200,
     minTasks: 3,
     maxTasks: 4,
     defaultTasks: 4,
@@ -27,9 +28,10 @@ export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
     hintMaxChars: 140,
   },
   middle: {
-    maxTokens: 1800,
-    repairMaxTokens: 2200,
+    maxTokens: 2400,
+    repairMaxTokens: 2800,
     regenerateMaxTokens: 1000,
+    stagedAnswerKeyMaxTokens: 1600,
     minTasks: 4,
     maxTasks: 5,
     defaultTasks: 5,
@@ -38,11 +40,11 @@ export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
     hintMaxChars: 160,
   },
   advance: {
-    maxTokens: 1800,
-    repairMaxTokens: 2200,
+    maxTokens: 2400,
+    repairMaxTokens: 2800,
     regenerateMaxTokens: 1200,
-    stagedCaseMaxTokens: 1600,
-    stagedAnswerKeyMaxTokens: 700,
+    stagedCaseMaxTokens: 2200,
+    stagedAnswerKeyMaxTokens: 1800,
     minTasks: 4,
     maxTasks: 5,
     defaultTasks: 5,

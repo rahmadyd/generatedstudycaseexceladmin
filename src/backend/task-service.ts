@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import {
   AnswerKeyItemSchema,
   CaseStudy,
+  FormulasSchema,
   GenerateRequest,
   RegenerateTaskRequest,
   Task,
@@ -18,7 +19,12 @@ import {
   resolveTaskCount,
 } from './prompts';
 import { callGroqChat } from './groq';
-import { GroqApiError, GroqOutputTruncatedError, GroqResponseParseError } from './ai-client';
+import {
+  GroqApiError,
+  GroqJsonValidationError,
+  GroqOutputTruncatedError,
+  GroqResponseParseError,
+} from './ai-client';
 import { GENERATION_CONFIG, GENERATION_REPAIR_ATTEMPTS } from '../shared/generation-config';
 import {
   getCaseStudyAlignmentIssues,
@@ -52,15 +58,33 @@ function hasCompleteAnswerKey(caseStudy: CaseStudy): boolean {
 }
 
 function parseAIJson(response: string, label: string): Record<string, unknown> {
+  const cleaned = cleanJsonString(response);
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(cleanJsonString(response));
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      throw new Error('Respons bukan object JSON.');
-    }
-    return parsed as Record<string, unknown>;
+    parsed = JSON.parse(cleaned);
   } catch (error) {
-    throw new Error(`${label}: ${(error as Error).message}`);
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace < 0 || lastBrace <= firstBrace) {
+      throw new Error(`${label}: ${(error as Error).message}`);
+    }
+    try {
+      parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+    } catch (fallbackError) {
+      throw new Error(`${label}: ${(fallbackError as Error).message}`);
+    }
   }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${label}: respons bukan object JSON.`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function normalizeAnswerKeyFormula(formula: string): string {
+  const trimmedFormula = formula.trim();
+  return normalizeExcelFormulaLocale(
+    trimmedFormula.startsWith('=') ? trimmedFormula : `=${trimmedFormula}`,
+  );
 }
 
 async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy> {
@@ -71,18 +95,27 @@ async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy>
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const rawResponse = await callGroqChat({
-        systemPrompt: 'Generate validated Excel answer keys. Return compact JSON only.',
+        systemPrompt: 'Generate formula clues and validated Excel answer keys. Return strict compact JSON only.',
         userPrompt: `${prompt}${retryGuidance}`,
-        temperature: 0.3,
+        temperature: 0.7,
         maxTokens: attempt === 0
           ? config.stagedAnswerKeyMaxTokens ?? config.maxTokens
           : config.repairMaxTokens,
         requestId,
         callNumber: attempt + 1,
         level: caseStudy.level,
+        fallbackOnRateLimit: false,
         jsonMode: true,
       });
-      const parsed = parseAIJson(rawResponse, 'Gagal membaca kunci jawaban bertahap');
+      const parsed = parseAIJson(rawResponse, 'Gagal membaca formula clues dan kunci jawaban');
+      const formulasResult = FormulasSchema.safeParse(parsed.formulas);
+      if (!formulasResult.success) {
+        throw new Error(
+          `Schema formula clues tidak valid: ${formulasResult.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; ')}`,
+        );
+      }
       const answerKeyResult = AnswerKeyItemSchema.array().safeParse(parsed.answerKey);
       if (!answerKeyResult.success) {
         throw new Error(
@@ -93,29 +126,39 @@ async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy>
       }
       const answerKey = answerKeyResult.data.map((answer) => ({
         ...answer,
-        formula: normalizeExcelFormulaLocale(answer.formula),
+        formula: normalizeAnswerKeyFormula(answer.formula),
       }));
       const candidate: CaseStudy = {
         ...caseStudy,
+        formulas: formulasResult.data,
         answerKey,
         answerKeyStatus: 'pending',
       };
-      const issues = getTaskAnswerAlignmentIssues(candidate);
+      const candidateValidation = validateAndSanitizeCaseStudy(candidate, caseStudy.excelVersion);
+      if (!candidateValidation.valid || !candidateValidation.data) {
+        throw new Error(`Kasus lengkap tidak lolos validasi Zod: ${candidateValidation.errors.join('; ')}`);
+      }
+      const validatedCandidate = candidateValidation.data;
+      const issues = getTaskAnswerAlignmentIssues(validatedCandidate);
       if (answerKey.length !== caseStudy.tasks.length) {
         issues.push(`harus ada tepat ${caseStudy.tasks.length} jawaban, AI menghasilkan ${answerKey.length}`);
       }
       if (issues.length > 0) {
         throw new Error(`Kunci jawaban bertahap tidak lolos pemeriksaan: ${issues.join('; ')}`);
       }
-      return { ...candidate, answerKeyStatus: 'available' };
+      return { ...validatedCandidate, answerKeyStatus: 'available' };
     } catch (error) {
       const message = (error as Error).message ?? '';
-      const canRetry = error instanceof GroqOutputTruncatedError ||
-        message.includes('Gagal membaca kunci jawaban bertahap') ||
+      const canRetry = error instanceof GroqJsonValidationError ||
+        error instanceof GroqOutputTruncatedError ||
+        message.includes('Gagal membaca formula clues dan kunci jawaban') ||
+        message.includes('Schema formula clues tidak valid') ||
         message.includes('Schema kunci jawaban tidak valid') ||
         message.includes('Kunci jawaban bertahap tidak lolos pemeriksaan');
       if (attempt === 0 && canRetry) {
-        retryGuidance = `\n\nREPAIR THE PREVIOUS ANSWER-KEY ERRORS: ${message}. Return exactly one answer per task in the required JSON shape. Use the supplied dataset column map and do not change the case.`;
+        retryGuidance = error instanceof GroqJsonValidationError
+          ? '\n\nOutput sebelumnya JSON tidak valid, ulangi dengan JSON valid saja. Keluarkan satu object JSON ringkas sesuai schema, tanpa markdown, dan jangan ubah soal atau dataset.'
+          : `\n\nREPAIR THE PREVIOUS FORMULA CLUE OR ANSWER-KEY ERRORS: ${message}. Return exactly one answer per task in the required JSON shape. Use the supplied dataset column map and do not change the case.`;
         continue;
       }
       throw error;
@@ -153,11 +196,7 @@ export async function generateCaseStudyService(
   const generationTheme = resolveGenerationTheme({ ...req, industry }, seed);
   const taskCount = resolveTaskCount(req, industry);
   const isStaged = req.level === 'advance';
-  const prompt = compileGeneratePrompt(
-    { ...req, industry },
-    seed,
-    isStaged ? { omitAnswerKey: true } : {},
-  );
+  const prompt = compileGeneratePrompt({ ...req, industry }, seed);
   const requestId = randomUUID();
   console.log('[generate] started', JSON.stringify({
     requestId,
@@ -171,14 +210,15 @@ export async function generateCaseStudyService(
   }));
   let lastError: unknown;
   let retryGuidance = '';
+  let validatedCase: CaseStudy | null = null;
 
   for (let attempt = 0; attempt <= GENERATION_REPAIR_ATTEMPTS; attempt++) {
     try {
       // apiKey tidak di-pass → ai-client otomatis baca dari process.env.GROQ_API_KEY
       const rawResponse = await callGroqChat({
-        systemPrompt: 'Create a practical Excel case in Indonesian. Return compact JSON only in the requested schema.',
+        systemPrompt: 'Create the case scenario, tasks, and dataset only. Return strict compact JSON only.',
         userPrompt: `${prompt}${retryGuidance}`,
-        temperature: 0.9,
+        temperature: 0.7,
         maxTokens: attempt > 0
           ? GENERATION_CONFIG[req.level].repairMaxTokens
           : isStaged
@@ -188,43 +228,29 @@ export async function generateCaseStudyService(
         callNumber: attempt + 1,
         level: req.level,
         allowModelFallback: true,
+        fallbackOnRateLimit: false,
         jsonMode: true,
       });
 
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(cleanJsonString(rawResponse));
-      } catch (e) {
-        const parseError = new Error(`Gagal parse JSON dari AI: ${(e as Error).message}`);
-        retryGuidance = '\n\nRETRY OUTPUT FORMAT: The previous response was incomplete or invalid JSON. Return one complete compact JSON object matching the requested schema. Shorten descriptions, hints, explanations, and enum lists; do not omit closing quotes or braces. Do not include markdown or text outside the JSON.';
-        throw parseError;
-      }
-
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        retryGuidance = '\n\nRETRY OUTPUT FORMAT: Return one complete JSON object matching the requested schema, with no markdown or extra text.';
-        throw new Error('Respons AI bukan object JSON yang valid.');
-      }
-
-      (parsed as Record<string, unknown>).seed = seed;
-      (parsed as Record<string, unknown>).generationTheme = generationTheme;
-      (parsed as Record<string, unknown>).level = req.level;
-      (parsed as Record<string, unknown>).role = req.role;
-      (parsed as Record<string, unknown>).excelVersion = req.excelVersion;
-      (parsed as Record<string, unknown>).industry = industry;
-      (parsed as Record<string, unknown>).formulaStyle = req.formulaStyle ?? 'classic';
-      (parsed as Record<string, unknown>).structuredReferenceAt = req.structuredReferenceAt ?? true;
-      (parsed as Record<string, unknown>).taskCountMode = req.taskCountMode ?? 'auto';
-      (parsed as Record<string, unknown>).taskCount = taskCount;
-      (parsed as Record<string, unknown>).createdAt = new Date().toISOString();
-      (parsed as Record<string, unknown>).id = `case-${seed}`;
+      const parsed = parseAIJson(rawResponse, 'Gagal parse JSON dari AI');
+      parsed.seed = seed;
+      parsed.generationTheme = generationTheme;
+      parsed.level = req.level;
+      parsed.role = req.role;
+      parsed.excelVersion = req.excelVersion;
+      parsed.industry = industry;
+      parsed.formulaStyle = req.formulaStyle ?? 'classic';
+      parsed.structuredReferenceAt = req.structuredReferenceAt ?? true;
+      parsed.taskCountMode = req.taskCountMode ?? 'auto';
+      parsed.taskCount = taskCount;
+      parsed.createdAt = new Date().toISOString();
+      parsed.id = `case-${seed}`;
+      parsed.formulas = { recommended: [], allowed: [], forbidden: [] };
+      parsed.answerKey = [];
+      parsed.answerKeyStatus = 'pending';
 
       const validation = validateAndSanitizeCaseStudy(parsed, req.excelVersion);
       if (validation.valid && validation.data) {
-        if (isStaged) {
-          validation.data.answerKey = [];
-          validation.data.answerKeyStatus = 'pending';
-        }
-
         // Jika AI menghasilkan lebih dari taskCount yang diminta, pangkas ke taskCount
         if (validation.data.tasks.length > taskCount) {
           validation.data.tasks = validation.data.tasks.slice(0, taskCount);
@@ -234,20 +260,21 @@ export async function generateCaseStudyService(
           );
         }
         const alignmentIssues = getCaseStudyAlignmentIssues(validation.data, req.role, industry);
-        alignmentIssues.push(...getTaskAnswerAlignmentIssues(validation.data));
         if (validation.data.tasks.length !== taskCount) {
           alignmentIssues.push(`jumlah tugas harus tepat ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
         }
         if (alignmentIssues.length === 0) {
+          validatedCase = validation.data;
           console.log('[generate] completed', JSON.stringify({
             requestId,
             clientRequestId,
-            seed: validation.data.seed,
+            seed: validatedCase.seed,
             generationTheme,
-            title: validation.data.title,
-            taskCount: validation.data.tasks.length,
+            title: validatedCase.title,
+            taskCount: validatedCase.tasks.length,
+            stage: 'case_and_dataset',
           }));
-          return validation.data;
+          break;
         }
         const columnLayout = validation.data.dataset.columns
           .map((column, index) => {
@@ -261,11 +288,11 @@ export async function generateCaseStudyService(
           })
           .join(', ');
         retryGuidance = `\n\nREPAIR THE PREVIOUS VALIDATION ERRORS: ${alignmentIssues.join('; ')}.
-Generate a new complete case strictly for role=${req.role} and industry=${industry}. The title and every task must match this role; remove any conflicting role topic (for example sales/penjualan when the selected role is inventory/gudang). Include a role-specific task and dataset field; generic terms such as barang, data, or transaksi are not sufficient. Include a concrete product/service/category from the selected industry's profile in dataset columns/enum values. Make every formula use the exact dataset columns named by its task and apply all stated criteria. For any aggregate task that names a date or period, state an exact date window and apply both >= start and <= end to the dataset date column in the formula. When conditional aggregates are forbidden, use an allowed array formula with IF and every criterion. Do not mention unused dataset columns in instructions or hints. For Classic formulas, use this column layout: ${columnLayout}. Do not repeat the previous mismatches.`;
+Generate a new complete case strictly for role=${req.role} and industry=${industry}. The title and every task must match this role; remove any conflicting role topic (for example sales/penjualan when the selected role is inventory/gudang). Include a role-specific task and dataset field; generic terms such as barang, data, or transaksi are not sufficient. Include a concrete product/service/category from the selected industry's profile in dataset columns/enum values. Ensure every stated task criterion is supported by a real dataset column and value. Do not mention unused dataset columns in instructions or hints. Return only the case scenario, tasks, and dataset; formula clues and answer keys are generated in the next sequential request. Do not repeat the previous mismatches.`;
         throw new Error(`Hasil AI tidak selaras dengan pilihan bidang admin/industri: ${alignmentIssues.join('; ')}`);
       }
 
-      retryGuidance = `\n\nREPAIR THE PREVIOUS SCHEMA ERRORS: ${validation.errors.join('; ')}. Return a complete compact JSON object matching the required schema exactly. Dataset range rules: number/int/currency ranges are two whole JSON numbers [min,max] with min <= max; date ranges are two valid chronological ISO date strings ["YYYY-MM-DD","YYYY-MM-DD"]; never mix types. Omit range for text/enum and omit optional values/range when unused.`;
+      retryGuidance = `\n\nREPAIR THE PREVIOUS SCHEMA ERRORS: ${validation.errors.join('; ')}. Return only the complete case scenario, tasks, and dataset JSON object. Numeric ranges are two whole JSON numbers [min,max]; date ranges are two chronological ISO dates ["YYYY-MM-DD","YYYY-MM-DD"]; omit ranges for text/enum. Do not return formula clues or answer keys.`;
       throw new Error(`Validasi gagal (attempt ${attempt + 1}): ${validation.errors.join('; ')}`);
     } catch (err) {
       lastError = err;
@@ -279,6 +306,13 @@ Generate a new complete case strictly for role=${req.role} and industry=${indust
       const malformedJson = err instanceof GroqOutputTruncatedError ||
         msg.includes('Gagal parse JSON dari AI') ||
         msg.includes('bukan object JSON');
+      if (err instanceof GroqJsonValidationError) {
+        if (attempt < GENERATION_REPAIR_ATTEMPTS) {
+          retryGuidance = '\n\nOutput sebelumnya JSON tidak valid, ulangi dengan JSON valid saja. Keluarkan hanya satu object JSON ringkas sesuai schema, tanpa markdown, dan pastikan semua string satu baris serta escape karakter kutip dan backslash.';
+          continue;
+        }
+        throw err;
+      }
       if (attempt < GENERATION_REPAIR_ATTEMPTS && malformedJson) {
         retryGuidance = '\n\nRETRY OUTPUT FORMAT: Return one complete compact JSON object only. Shorten all prose and keep the requested schema unchanged.';
       }
@@ -286,6 +320,22 @@ Generate a new complete case strictly for role=${req.role} and industry=${indust
       if (err instanceof GroqApiError || msg.includes('tidak ditemukan')) {
         throw err;
       }
+    }
+  }
+
+  if (validatedCase) {
+    try {
+      return await generateStagedAnswerKey(validatedCase);
+    } catch (error) {
+      if (isStaged) {
+        console.error('Formula clue and answer-key stage failed:', JSON.stringify({
+          stage: 'formula_clues_and_answer_key',
+          seed: validatedCase.seed,
+          message: (error as Error).message,
+        }));
+        return { ...validatedCase, answerKeyStatus: 'pending' };
+      }
+      throw error;
     }
   }
 
@@ -359,7 +409,7 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
 
   const replacementAnswer = {
     task: taskNo,
-    formula: normalizeExcelFormulaLocale(newAnswer.formula),
+    formula: normalizeAnswerKeyFormula(newAnswer.formula),
     explanation: newAnswer.explanation || '',
   };
   const finalAnswerKey = [

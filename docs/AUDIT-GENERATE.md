@@ -6,14 +6,17 @@
 - Tema/angle dipilih dari daftar khusus role, dan hingga tujuh tema terakhir dari riwayat lokal dikirim untuk mencegah pengulangan.
 - Route generate menetapkan `force-dynamic`, `revalidate = 0`, dan `Cache-Control: no-store`; fetch browser memakai `cache: 'no-store'`.
 - Semua panggilan pembuatan kasus, kunci, dan regenerate meminta JSON mode. Field struktural yang wajib hilang ditolak; tugas/rumus dummy tidak dibuat untuk menutupi respons AI yang tidak lengkap.
+- Generate semua level kini berjalan dalam dua tahap serial: soal/dataset, lalu formula clues dan kunci jawaban. String diminta satu baris dan di-escape; formula jawaban dikirim tanpa `=` dan aplikasi menambahkan awalan setelah validasi.
+- Jika Groq menolak JSON mode dengan HTTP 400 dan `failed_generation`, server mencatat output mentah, pesan parse diagnostik, panjang output, dan max token. Akar insiden terdahulu belum dapat dipastikan tanpa `failed_generation` dari log produksi; output tanpa penutup object mengarah ke truncation, sedangkan kegagalan parse di tengah string/escape mengarah ke JSON tidak ter-escape.
+- Error khusus 400 JSON-validation mencoba ulang satu kali dengan instruksi “Output sebelumnya JSON tidak valid, ulangi dengan JSON valid saja”; 429 tidak pernah diulang. Respons JSON berisi teks tambahan dicoba parse langsung lalu dengan ekstraksi object pertama sampai terakhir, dan hasilnya divalidasi dengan Zod.
 - Kasus lama dihapus dari tampilan ketika generate dimulai. Error HTTP 429, error provider, parse JSON, dan schema tampil di UI. Loading state dan key seed memaksa tampilan hasil baru di-mount ulang.
-- Fallback model yang dikonfigurasi dicoba hanya untuk HTTP 429 atau 5xx; error lain tidak mengganti model secara diam-diam. Jika fallback tidak dikonfigurasi, error asli ditampilkan.
+- Fallback model yang dikonfigurasi pada alur Generate hanya dicoba untuk HTTP 5xx; respons 429 tidak memicu fallback atau retry. Error lain tidak mengganti model secara diam-diam. Jika fallback tidak dikonfigurasi, error asli ditampilkan.
 - Log `[generate]` di browser dan server berisi request ID, pilihan role/industri/level, jumlah tema terakhir, seed, tema terpilih, judul, dan jumlah tugas. Jangan memasukkan API key atau isi prompt ke log.
 - Model default sekarang `llama-3.1-8b-instant`; `GROQ_MODEL` dapat memilih model lain. Perbaikan validasi dibatasi satu retry, dan batas token output diturunkan lagi; detail angka aktif ada di `src/shared/generation-config.ts`.
 - Jeda 5 detik di server dan cooldown sukses di UI dihapus. Batas aplikasi 15 permintaan Generate valid/menit tetap ada, tetapi memakai `APP_RATE_LIMITED` agar tidak tertukar dengan 429 Groq (`AI_RATE_LIMITED`).
 - Untuk 429 Groq, log server menyertakan status, `Retry-After`, dan seluruh header `x-ratelimit-*`. UI countdown hanya memakai `Retry-After` atau reset header yang tersedia; tidak ada lagi fallback 30 detik yang menyesatkan.
-- Jalur Easy/Middle biasanya memanggil Groq sekali dan maksimal dua kali tanpa fallback (satu repair); dengan fallback yang dikonfigurasi, batasnya empat panggilan provider. Advance biasanya dua panggilan serial (kasus + kunci), maksimal empat tanpa fallback atau delapan dengan fallback. Fallback menambah maksimal satu panggilan serial untuk setiap percobaan yang menerima 429/5xx.
-- Batas `max_tokens` aktif: Easy 1.500 (repair 1.800), Middle 1.800 (repair 2.200), Advance 1.800 (repair 2.200; tahap kasus 1.600 dan kunci 700). Nilai ini menjaga ruang bagi JSON berisi 4–5 tugas tanpa kembali ke batas lama yang lebih tinggi.
+- Sukses normal semua level memakai dua panggilan Groq serial. Tanpa fallback, setiap tahap dapat sekali repair; maksimal empat panggilan provider per Generate. Fallback yang dikonfigurasi dapat menambah satu panggilan serial per tahap hanya pada 5xx, tidak pada 429. Advance mempertahankan soal tervalidasi jika tahap formula gagal, agar dapat dicoba ulang.
+- Batas `max_tokens` aktif: Easy 2.000 (repair 2.400, formula+kunci 1.200), Middle 2.400 (repair 2.800, formula+kunci 1.600), Advance 2.400 (repair 2.800; tahap soal 2.200 dan formula+kunci 1.800).
 
 ## Baseline kode sebelum optimasi (historis)
 

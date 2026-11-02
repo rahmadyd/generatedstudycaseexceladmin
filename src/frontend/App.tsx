@@ -256,9 +256,6 @@ export default function App() {
         if (newCase.taskCount !== undefined) url.searchParams.set('taskCount', String(newCase.taskCount));
         window.history.replaceState({}, '', url.toString());
       }
-      if (newCase.answerKeyStatus === 'pending') {
-        await handleRetryMissingContent(newCase);
-      }
       return;
     } catch (err) {
       console.error('[generate] client failed', { clientRequestId, error: err });

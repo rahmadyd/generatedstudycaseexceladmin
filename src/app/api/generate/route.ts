@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GenerateRequestSchema } from '@/shared/schema';
 import { generateCaseStudyService } from '@/backend/task-service';
 import { checkRateLimit } from '@/backend/rate-limit';
-import { GroqApiError, GroqResponseParseError } from '@/backend/ai-client';
+import {
+  GroqApiError,
+  GroqJsonValidationError,
+  GroqResponseParseError,
+} from '@/backend/ai-client';
 import {
   GENERATION_CONFIG,
   GENERATION_RATE_LIMIT_REQUESTS,
@@ -72,6 +76,15 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     console.error('API /api/generate error:', error);
+    if (error instanceof GroqJsonValidationError) {
+      return NextResponse.json(
+        {
+          error: 'Groq gagal memvalidasi JSON setelah satu kali percobaan ulang. Coba generate kembali; output mentah model tersedia di log server.',
+          code: 'AI_JSON_VALIDATION_ERROR',
+        },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
     if (error instanceof GroqApiError && error.status === 429) {
       const waitMessage = error.retryAfterSeconds === undefined
         ? 'Groq tidak menyertakan estimasi waktu reset pada header.'
@@ -116,6 +129,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof GroqResponseParseError ||
       (error instanceof Error && (
         error.message.includes('Gagal parse JSON dari AI') ||
+        error.message.includes('Gagal membaca formula clues dan kunci jawaban') ||
         error.message.includes('bukan JSON valid')
       ))) {
       return NextResponse.json(

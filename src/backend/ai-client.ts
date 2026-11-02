@@ -10,6 +10,7 @@ export interface AICompletionOptions {
   level?: string;
   providerCallNumber?: number;
   allowModelFallback?: boolean;
+  fallbackOnRateLimit?: boolean;
 }
 
 export class GroqApiError extends Error {
@@ -23,6 +24,13 @@ export class GroqApiError extends Error {
   ) {
     super(message);
     this.name = 'GroqApiError';
+  }
+}
+
+export class GroqJsonValidationError extends GroqApiError {
+  constructor(providerMessage: string, readonly failedGeneration?: string) {
+    super('Groq menolak output karena validasi JSON gagal.', 400, 'json_validation', undefined, providerMessage);
+    this.name = 'GroqJsonValidationError';
   }
 }
 
@@ -104,6 +112,7 @@ async function logGroqResponse(
     callNumber: options.callNumber,
     providerCallNumber,
     model,
+    maxTokens: options.maxTokens,
     status: response.status,
   };
 
@@ -131,9 +140,23 @@ async function logGroqResponse(
 
   const errorBody = await response.clone().text();
   let providerMessage = errorBody;
+  let failedGeneration: string | undefined;
+  let failedGenerationParseError: string | undefined;
   try {
     const providerError = JSON.parse(errorBody)?.error;
     providerMessage = providerError?.message || errorBody;
+    if (providerError?.failed_generation !== undefined) {
+      failedGeneration = typeof providerError.failed_generation === 'string'
+        ? providerError.failed_generation
+        : JSON.stringify(providerError.failed_generation);
+      if (typeof failedGeneration === 'string') {
+        try {
+          JSON.parse(failedGeneration);
+        } catch (error) {
+          failedGenerationParseError = (error as Error).message;
+        }
+      }
+    }
   } catch (error) {
     console.warn('Groq error response was not JSON:', (error as Error).message);
   }
@@ -144,6 +167,14 @@ async function logGroqResponse(
     retryAfter: response.headers.get('retry-after'),
     rateLimitHeaders,
     providerMessage,
+    ...(failedGeneration === undefined ? {} : { failedGeneration }),
+    ...(failedGenerationParseError === undefined
+      ? {}
+      : {
+          failedGenerationLength: failedGeneration?.length,
+          failedGenerationEndsWithClosingBrace: failedGeneration?.trimEnd().endsWith('}'),
+          failedGenerationParseError,
+        }),
   }));
 }
 
@@ -236,7 +267,8 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
 
   // Only transient quota/provider failures should switch to the configured model.
   if (
-    (response.status === 429 || (response.status >= 500 && response.status < 600)) &&
+    ((response.status === 429 && options.fallbackOnRateLimit !== false) ||
+      (response.status >= 500 && response.status < 600)) &&
     options.allowModelFallback !== false &&
     model === defaultModel &&
     fallbackModel.length > 0 &&
@@ -265,10 +297,21 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
       const providerError = JSON.parse(errorBody)?.error;
       parsedMsg = providerError?.message || errorBody;
       providerCode = providerError?.code || providerError?.type || '';
+      if (
+        response.status === 400 &&
+        typeof providerError?.failed_generation === 'string' &&
+        /failed to validate json/i.test(parsedMsg)
+      ) {
+        throw new GroqJsonValidationError(parsedMsg, providerError.failed_generation);
+      }
     } catch (error) {
+      if (error instanceof GroqJsonValidationError) throw error;
       console.warn('Unable to parse Groq error payload:', (error as Error).message);
     }
 
+    if (response.status === 400 && /failed to validate json/i.test(parsedMsg)) {
+      throw new GroqJsonValidationError(parsedMsg);
+    }
     const rateLimitHeaders = getRateLimitHeaders(response);
     const retryAfterSeconds = response.status === 429
       ? getRetryAfterSeconds(response, rateLimitHeaders)

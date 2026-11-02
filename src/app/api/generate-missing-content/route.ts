@@ -4,7 +4,11 @@ import {
   generateMissingCaseContentService,
   StagedContentGenerationError,
 } from '@/backend/task-service';
-import { GroqApiError, GroqResponseParseError } from '@/backend/ai-client';
+import {
+  GroqApiError,
+  GroqJsonValidationError,
+  GroqResponseParseError,
+} from '@/backend/ai-client';
 import { checkRateLimit } from '@/backend/rate-limit';
 import {
   ANSWER_KEY_RATE_LIMIT_REQUESTS,
@@ -78,6 +82,16 @@ export async function POST(req: NextRequest) {
           { status: 401 },
         );
       }
+      if (providerError instanceof GroqJsonValidationError) {
+        return NextResponse.json(
+          {
+            error: 'Groq gagal memvalidasi JSON formula clues setelah satu kali percobaan ulang. Coba lengkapi kembali; output mentah tersedia di log server.',
+            code: 'AI_JSON_VALIDATION_ERROR',
+            caseStudy: error.partialCaseStudy,
+          },
+          { status: 400 },
+        );
+      }
       if (providerError && providerError.status >= 500) {
         return NextResponse.json(
           {
@@ -90,7 +104,7 @@ export async function POST(req: NextRequest) {
       }
       if (error.originalError instanceof GroqResponseParseError ||
         (error.originalError instanceof Error &&
-          error.originalError.message.includes('Gagal membaca kunci jawaban bertahap'))) {
+          error.originalError.message.includes('Gagal membaca formula clues dan kunci jawaban'))) {
         return NextResponse.json(
           {
             error: 'Groq mengembalikan output kunci jawaban yang bukan JSON valid.',
