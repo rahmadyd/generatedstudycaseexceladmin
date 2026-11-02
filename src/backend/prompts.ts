@@ -291,6 +291,7 @@ export function compileAnswerKeyPrompt(caseStudy: CaseStudy): string {
     };
   });
   return `Generate formula clues and answer keys for this validated Indonesian Excel case. Return one compact JSON object only.
+The top-level key for formula clues MUST be exactly "formulas" with the nested keys "recommended", "allowed", and "forbidden". Do not rename these keys. Each nested value is an array of formula-name strings; each array may be empty only when that category has no applicable entries. Include at least one recommended formula. The top-level answer key is exactly "answerKey".
 Level: ${caseStudy.level}; Excel: ${caseStudy.excelVersion}; reference style: ${caseStudy.formulaStyle ?? 'classic'}; structured-reference @: ${caseStudy.structuredReferenceAt !== false}.
 Scenario: ${caseStudy.scenario}
 Tasks: ${JSON.stringify(taskContext)}
@@ -298,7 +299,8 @@ Available source sheet: ${caseStudy.dataset.sheetName}; dataset columns in order
 Formula policy: ${JSON.stringify(LEVEL_CONFIG[caseStudy.level])}
 Return exactly one answer per task in task order. Each formula must satisfy every condition in its task, reference every dataset column named by that task, use only available columns and allowed formulas, and match the requested target. Date/period aggregates must apply both date bounds (>= start and <= end) to the date column; filtering worksheet rows is not a formula condition. If conditional aggregate functions are forbidden, use an allowed array formula with all conditions. Do not invent extra sheets, lookup tables, or fixed dataset results. Classic formulas must use the column letters above; Modern formulas must use actual table headers. Use one copyable formula for formula tasks and concise procedural steps for non-formula tasks. Use English function names and semicolons between arguments. Keep each explanation within ${GENERATION_CONFIG[caseStudy.level].explanationMaxChars} characters.
 Each answerKey formula string must contain the Excel formula WITHOUT a leading equals sign; the application adds it. Keep every string on one line and escape embedded double quotes and backslashes.
-{"formulas":{"recommended":["string"],"allowed":["string"],"forbidden":["string"]},"answerKey":[{"task":1,"formula":"SUM(A2:A151)","explanation":"string"}]}
+Example JSON shape (keep these key names exactly; replace example values with formulas appropriate to the case):
+{"formulas":{"recommended":["SUMIFS"],"allowed":["SUM","IF"],"forbidden":["VLOOKUP"]},"answerKey":[{"task":1,"formula":"SUM(A2:A151)","explanation":"Jumlahkan nilai pada rentang data."}]}
 Return strict valid JSON only, no markdown, comments, trailing commas, or prose outside the object.`;
 }
 

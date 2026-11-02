@@ -80,6 +80,112 @@ function parseAIJson(response: string, label: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
+const FORMULA_CLUE_KEYS = ['formulas', 'formula_clues', 'formulaClue', 'clues'] as const;
+const RESPONSE_WRAPPER_KEYS = ['data', 'result'] as const;
+const FORMULA_CATEGORY_KEYS = ['recommended', 'allowed', 'forbidden'] as const;
+const FormulaClueResponseSchema = FormulasSchema.refine(
+  (formulas) => formulas.recommended.length + formulas.allowed.length + formulas.forbidden.length > 0,
+  { message: 'Minimal satu daftar formula clue harus berisi satu formula.' },
+);
+
+interface NormalizedAnswerKeyResponse {
+  formulas: unknown;
+  answerKey: unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isFormulaClueObject(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && FORMULA_CATEGORY_KEYS.some((key) => key in value);
+}
+
+function isResponseEnvelope(value: Record<string, unknown>): boolean {
+  return [...RESPONSE_WRAPPER_KEYS, ...FORMULA_CLUE_KEYS].some((key) => key in value);
+}
+
+function normalizeFormulaClueArray(value: unknown[]): Record<string, unknown> {
+  const grouped: Record<(typeof FORMULA_CATEGORY_KEYS)[number], string[]> = {
+    recommended: [],
+    allowed: [],
+    forbidden: [],
+  };
+  for (const clue of value) {
+    if (typeof clue === 'string') {
+      grouped.recommended.push(clue);
+      continue;
+    }
+    if (!isRecord(clue)) continue;
+    const category = String(clue.category ?? clue.type ?? '').toLocaleLowerCase('en');
+    const key = FORMULA_CATEGORY_KEYS.find((candidate) => candidate === category);
+    const formula = clue.formula ?? clue.name ?? clue.value;
+    if (key && typeof formula === 'string') grouped[key].push(formula);
+  }
+  return grouped;
+}
+
+function normalizeAnswerKeyResponse(
+  parsed: Record<string, unknown>,
+): NormalizedAnswerKeyResponse {
+  const queue: unknown[] = [parsed];
+  const visited = new Set<object>();
+  let formulas: unknown;
+  let answerKey: unknown;
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!isRecord(current) || visited.has(current)) continue;
+    visited.add(current);
+
+    if (answerKey === undefined && current.answerKey !== undefined) {
+      answerKey = current.answerKey;
+    }
+
+    if (formulas === undefined && isFormulaClueObject(current)) {
+      formulas = current;
+    }
+
+    for (const key of RESPONSE_WRAPPER_KEYS) {
+      if (current[key] !== undefined) queue.push(current[key]);
+    }
+    for (const key of FORMULA_CLUE_KEYS) {
+      const value = current[key];
+      if (value === undefined || value === null) continue;
+      if (formulas === undefined && !isRecord(value) && !Array.isArray(value)) {
+        formulas = value;
+      } else if (Array.isArray(value)) {
+        if (formulas === undefined) formulas = value;
+      } else if (isRecord(value)) {
+        if (formulas === undefined && (isFormulaClueObject(value) || !isResponseEnvelope(value))) {
+          formulas = value;
+        } else {
+          queue.push(value);
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(formulas)) {
+    formulas = normalizeFormulaClueArray(formulas);
+  }
+
+  return { formulas, answerKey };
+}
+
+function formatZodIssues(issues: Array<{
+  path: PropertyKey[];
+  message: string;
+  expected?: string;
+  input?: unknown;
+}>): string {
+  return issues.map((issue) => {
+    const path = issue.path.length > 0 ? issue.path.map(String).join('.') : '<root>';
+    const received = issue.input === undefined ? 'undefined' : JSON.stringify(issue.input);
+    return `${path}: ${issue.message} (expected=${issue.expected ?? 'valid value'}, received=${received})`;
+  }).join('; ');
+}
+
 function normalizeAnswerKeyFormula(formula: string): string {
   const trimmedFormula = formula.trim();
   return normalizeExcelFormulaLocale(
@@ -108,20 +214,37 @@ async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy>
         jsonMode: true,
       });
       const parsed = parseAIJson(rawResponse, 'Gagal membaca formula clues dan kunci jawaban');
-      const formulasResult = FormulasSchema.safeParse(parsed.formulas);
+      const normalizedResponse = normalizeAnswerKeyResponse(parsed);
+      const formulaClueKeys = isRecord(normalizedResponse.formulas)
+        ? Object.keys(normalizedResponse.formulas)
+        : [];
+      console.info('[generate] formula clue response shape', JSON.stringify({
+        requestId,
+        attempt: attempt + 1,
+        responseKeys: Object.keys(parsed),
+        formulaClueKeys,
+        formulaCluesType: Array.isArray(normalizedResponse.formulas)
+          ? 'array'
+          : typeof normalizedResponse.formulas,
+      }));
+      const formulasResult = FormulaClueResponseSchema.safeParse(normalizedResponse.formulas);
       if (!formulasResult.success) {
+        console.error('[generate] formula clue schema mismatch', JSON.stringify({
+          requestId,
+          attempt: attempt + 1,
+          rawOutput: rawResponse,
+          responseKeys: Object.keys(parsed),
+          normalizedFormulaClues: normalizedResponse.formulas,
+          issues: formulasResult.error.issues,
+        }));
         throw new Error(
-          `Schema formula clues tidak valid: ${formulasResult.error.issues
-            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-            .join('; ')}`,
+          `Schema formula clues tidak valid: ${formatZodIssues(formulasResult.error.issues)}`,
         );
       }
-      const answerKeyResult = AnswerKeyItemSchema.array().safeParse(parsed.answerKey);
+      const answerKeyResult = AnswerKeyItemSchema.array().safeParse(normalizedResponse.answerKey);
       if (!answerKeyResult.success) {
         throw new Error(
-          `Schema kunci jawaban tidak valid: ${answerKeyResult.error.issues
-            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-            .join('; ')}`,
+          `Schema kunci jawaban tidak valid: ${formatZodIssues(answerKeyResult.error.issues)}`,
         );
       }
       const answerKey = answerKeyResult.data.map((answer) => ({
