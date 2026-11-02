@@ -12,7 +12,8 @@ Keep the hint within {{hintMaxChars}} characters and the explanation within {{ex
 RULES
 - Return compact JSON only with keys `task` and `answerKey`; both use task number {{taskNo}}.
 - Write the instruction, hint, target, formula, and explanation as one consistent operation.
-- Apply every stated condition in the formula and use only available columns and allowed functions. Every dataset column named in the instruction or hint must be used by the formula; do not mention unused columns. The standard case has one source-data sheet; do not invent lookup tables.
+- Apply every stated condition in the formula and use only available columns and allowed functions. Every dataset column named in the instruction or hint must be used by the formula; do not mention unused columns. Keep the regenerated task specific to the selected admin role and industry; use only the supplied dataset schema and industry/role context. The standard case has one source-data sheet; do not invent lookup tables.
+- If an aggregate task names a date or period, state an exact date window and make the formula apply both bounds (>= start date and <= end date) to the available date column. Merely referencing the date column is not enough.
 - Formula tasks need one copyable formula. Procedural tasks need concise steps. Use semicolons between Excel function arguments and English function names.
 - Keep the hint concise and the explanation educational but brief. Do not invent fixed results for random rows.
 - Classic formulas use cell/range references; Modern formulas use structured references with available headers.

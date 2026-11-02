@@ -239,7 +239,21 @@ export const INDUSTRY_PROFILES: Record<Exclude<Industry, 'Acak'>, IndustryProfil
     categories: ['Kamar', 'Reservasi', 'Paket Wisata', 'Layanan Hotel'],
   },
   'Restoran dan kafe (F&B)': {
-    signals: ['restoran', 'kafe', 'f&b', 'makanan', 'minuman', 'pesanan meja', 'bahan makanan'],
+    signals: [
+      'restoran',
+      'kafe',
+      'f&b',
+      'makanan',
+      'minuman',
+      'menu',
+      'kasir',
+      'pesanan meja',
+      'bahan makanan',
+      'nasi goreng',
+      'kopi susu',
+      'ayam bakar',
+      'teh lemon',
+    ],
     focus: 'pesanan menu, transaksi kasir, stok bahan makanan, dan biaya operasional',
     products: ['Nasi Goreng', 'Kopi Susu', 'Ayam Bakar', 'Teh Lemon', 'Bahan Baku Dapur'],
     categories: ['Makanan', 'Minuman', 'Bahan Baku', 'Layanan'],
@@ -272,18 +286,66 @@ export const INDUSTRY_PROFILES: Record<Exclude<Industry, 'Acak'>, IndustryProfil
 
 export function getIndustryColumnValues(columnName: string, industry: Industry | undefined): string[] | undefined {
   if (!industry || industry === 'Acak') return undefined;
-  if (/(^|[_\s])(kode|id|sku|no|nomor)([_\s]|$)|^(kode|id|sku|no|nomor)/i.test(columnName)) return undefined;
+  const normalizedColumnName = columnName.toLocaleLowerCase('id').replace(/[\s-]+/g, '_');
+  if (/(^|_)(kode|id|sku|no|nomor|status|tanggal|tgl|waktu|qty|jumlah|harga|tarif|metode)(_|$)/i.test(normalizedColumnName)) {
+    return undefined;
+  }
   const profile = INDUSTRY_PROFILES[industry];
-  if (/kategori|kelompok|jenis[_\s-]?(barang|produk|komoditas|layanan)|tipe[_\s-]?(barang|produk)/i.test(columnName)) {
+  const profileVocabulary = [...profile.signals, ...profile.products, ...profile.categories]
+    .map((value) => value.toLocaleLowerCase('id'));
+  const profileUsesTerm = (term: string) => profileVocabulary.some((value) => value.includes(term));
+  const categoryEntity = /(?:jenis|tipe)_?(barang|produk|komoditas|layanan|menu|obat|aset|material|surat|kamar|tanaman|ternak|ikan)/i.exec(normalizedColumnName);
+  const genericCategoryColumn = /kategori|kelompok|golongan/i.test(normalizedColumnName);
+  const profileSpecificCategory = categoryEntity !== null &&
+    (['barang', 'produk', 'komoditas', 'material'].includes(categoryEntity[1].toLocaleLowerCase('id')) ||
+      profileUsesTerm(categoryEntity[1].toLocaleLowerCase('id')));
+  if (genericCategoryColumn || profileSpecificCategory) {
     return profile.categories;
   }
-  if (/produk|barang|komoditas|komoditi|item|material|nama[_\s-]?menu|layanan|jasa|komponen|hasil[_\s-]?panen/i.test(columnName)) {
+  const genericProductColumn = /produk|barang|komoditas|komoditi|item|material/i.test(normalizedColumnName);
+  const specializedProductTerms = [
+    'menu',
+    'obat',
+    'farmasi',
+    'aset',
+    'inventaris',
+    'layanan',
+    'jasa',
+    'komponen',
+    'panen',
+    'tanaman',
+    'ternak',
+    'hewan',
+    'ikan',
+    'kayu',
+    'kendaraan',
+    'kamar',
+    'paket',
+    'polis',
+    'rekening',
+    'unit',
+    'surat',
+    'dokumen',
+    'berkas',
+    'formulir',
+  ];
+  if (
+    genericProductColumn ||
+    specializedProductTerms.some((term) =>
+      normalizedColumnName.includes(term) && profileUsesTerm(term),
+    )
+  ) {
     return profile.products;
   }
   return undefined;
 }
 
-export const ROLE_PROFILES: Record<string, { label: string; description: string; signals: string[] }> = Object.fromEntries(
+export const ROLE_PROFILES: Record<string, {
+  label: string;
+  description: string;
+  signals: string[];
+  datasetSignals: string[];
+}> = Object.fromEntries(
   ADMIN_ROLES.map((role) => [role.id, {
     label: role.label,
     description: role.desc,
@@ -296,8 +358,17 @@ export const ROLE_PROFILES: Record<string, { label: string; description: string;
       'Sekretaris/Surat': ['surat', 'agenda', 'dokumen', 'disposisi', 'jadwal', 'arsip'],
       'MBG': ['laporan', 'kinerja', 'keuangan', 'operasional', 'grup', 'kpi'],
     } as Record<string, string[]>)[role.id] ?? [role.label.toLocaleLowerCase('id')],
+    datasetSignals: ({
+      'Penjualan': ['penjualan', 'order', 'transaksi', 'pelanggan', 'customer', 'omzet', 'subtotal', 'piutang', 'harga_jual', 'total_bayar', 'metode_pembayaran'],
+      'Inventory/Gudang': ['stok', 'persediaan', 'barang', 'gudang', 'mutasi', 'opname', 'stok_awal', 'stok_masuk', 'stok_keluar', 'stok_akhir', 'saldo', 'batch', 'tanggal_kedaluwarsa'],
+      'HRD/Absensi': ['pegawai', 'karyawan', 'personalia', 'kehadiran', 'absensi', 'absen', 'cuti', 'lembur', 'shift', 'jam_masuk', 'jam_pulang', 'departemen'],
+      'Keuangan/Kasir': ['kas', 'keuangan', 'pembayaran', 'pengeluaran', 'anggaran', 'rekonsiliasi', 'nominal', 'biaya', 'pemasukan', 'saldo', 'total_bayar', 'metode_pembayaran'],
+      'Pengadaan': ['pengadaan', 'pembelian', 'vendor', 'pemasok', 'purchase_order', 'nomor_po', 'harga_beli', 'qty_pesan', 'tanggal_pemesanan', 'material'],
+      'Sekretaris/Surat': ['surat', 'dokumen', 'agenda', 'disposisi', 'arsip', 'perihal', 'nomor_surat', 'tanggal_surat', 'tujuan_surat', 'status_surat'],
+      'MBG': ['kpi', 'unit', 'grup', 'pendapatan', 'operasional', 'laporan', 'target', 'realisasi', 'penerima_manfaat', 'biaya_operasional', 'indikator_kinerja'],
+    } as Record<string, string[]>)[role.id] ?? [role.label.toLocaleLowerCase('id')],
   }]),
-) as Record<string, { label: string; description: string; signals: string[] }>;
+) as Record<string, { label: string; description: string; signals: string[]; datasetSignals: string[] }>;
 
 export function getRecommendedTaskCount(level: Level, _industry: Industry): number {
   return GENERATION_CONFIG[level].defaultTasks;

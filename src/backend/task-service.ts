@@ -165,7 +165,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
       const rawResponse = await callGroqChat({
         systemPrompt: 'Create a practical Excel case in Indonesian. Return compact JSON only in the requested schema.',
         userPrompt: `${prompt}${retryGuidance}`,
-        temperature: 0.65 + attempt * 0.1,
+        temperature: attempt === 0 ? 0.65 : 0.3,
         maxTokens: attempt > 0
           ? GENERATION_CONFIG[req.level].repairMaxTokens
           : isStaged
@@ -238,7 +238,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
           })
           .join(', ');
         retryGuidance = `\n\nREPAIR THE PREVIOUS VALIDATION ERRORS: ${alignmentIssues.join('; ')}.
-Generate a new complete case with role=${req.role} and industry=${industry}. Include clear industry-specific terms in both scenario and dataset headers/values. Make every formula use the exact dataset columns named by its task and apply all stated criteria. Do not mention unused dataset columns in instructions or hints. For Classic formulas, use this column layout: ${columnLayout}. Do not repeat the previous mismatches.`;
+Generate a new complete case with role=${req.role} and industry=${industry}. Include clear industry-specific terms in both scenario and dataset headers/values. Make every formula use the exact dataset columns named by its task and apply all stated criteria. For any aggregate task that names a date or period, state an exact date window and apply both >= start and <= end to the dataset date column in the formula. When conditional aggregates are forbidden, use an allowed array formula with IF and every criterion. Do not mention unused dataset columns in instructions or hints. For Classic formulas, use this column layout: ${columnLayout}. Do not repeat the previous mismatches.`;
         throw new Error(`Hasil AI tidak selaras dengan pilihan bidang admin/industri: ${alignmentIssues.join('; ')}`);
       }
 
@@ -293,7 +293,9 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     structuredReferenceAt: caseStudy.structuredReferenceAt,
     recommendedFormulas: caseStudy.formulas.recommended,
     forbiddenFormulas: caseStudy.formulas.forbidden,
-    columns: caseStudy.dataset.columns.map((c) => c.name),
+    columns: caseStudy.dataset.columns.map((column) =>
+      `${column.name} (${column.type}${column.values ? `; values: ${column.values.join(' | ')}` : ''}${column.range ? `; range: ${column.range.join(' to ')}` : ''})`,
+    ),
     taskNo,
     oldInstruction: oldTask.instruction,
   });

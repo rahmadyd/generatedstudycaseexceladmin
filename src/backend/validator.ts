@@ -8,16 +8,6 @@ export interface ValidationResult {
   errors: string[];
 }
 
-const ROLE_DATASET_SIGNALS: Record<string, string[]> = {
-  'Penjualan': ['penjualan', 'order', 'transaksi', 'pelanggan', 'customer', 'omzet', 'subtotal', 'piutang'],
-  'Inventory/Gudang': ['stok', 'persediaan', 'barang', 'gudang', 'mutasi', 'opname'],
-  'HRD/Absensi': ['pegawai', 'karyawan', 'absen', 'kehadiran', 'cuti', 'lembur'],
-  'Keuangan/Kasir': ['kas', 'keuangan', 'pembayaran', 'pengeluaran', 'anggaran', 'rekonsiliasi', 'nominal', 'biaya'],
-  'Pengadaan': ['pengadaan', 'pembelian', 'vendor', 'pemasok', 'purchase order', 'nomor_po'],
-  'Sekretaris/Surat': ['surat', 'dokumen', 'agenda', 'disposisi', 'arsip'],
-  'MBG': ['kpi', 'unit', 'grup', 'pendapatan', 'operasional'],
-};
-
 function containsAny(text: string, terms: string[]): boolean {
   const normalized = text.toLocaleLowerCase('id');
   return terms.some((term) => normalized.includes(term.toLocaleLowerCase('id')));
@@ -168,8 +158,7 @@ export function getCaseStudyAlignmentIssues(
     issues.push(`skenario dan tugas tidak menunjukkan tanggung jawab ${profile.label}`);
   }
 
-  const roleDatasetSignals = ROLE_DATASET_SIGNALS[role];
-  if (roleDatasetSignals && !containsAny(datasetDescription, roleDatasetSignals)) {
+  if (profile && !containsAny(datasetDescription, profile.datasetSignals)) {
     issues.push(`kolom dataset tidak terlihat sesuai dengan bidang admin ${profile?.label ?? role}`);
   }
 
@@ -177,7 +166,12 @@ export function getCaseStudyAlignmentIssues(
   if (!containsAny(narrative, industryProfile.signals)) {
     issues.push(`skenario dan tugas tidak menunjukkan konteks industri ${industry}`);
   }
-  if (!containsAny(datasetDescription, industryProfile.signals)) {
+  const industryDatasetSignals = [
+    ...industryProfile.signals,
+    ...industryProfile.products,
+    ...industryProfile.categories,
+  ];
+  if (!containsAny(datasetDescription, industryDatasetSignals)) {
     issues.push(`kolom/nilai dataset tidak spesifik untuk industri ${industry}`);
   }
 
@@ -275,6 +269,41 @@ export function getTaskAnswerAlignmentIssues(
       issues.push(
         `tugas ${task.no} meminta agregasi dengan kriteria, tetapi rumus tidak menerapkan kriteria tersebut (AVERAGE/SUM/COUNT biasa tetap menghitung baris yang difilter)`,
       );
+    }
+
+    const dateWindowRequested =
+      /\b(bulan|minggu|kuartal|triwulan|periode|rentang|antara|hingga|sampai|sejak)\b/i.test(taskText);
+    if (formula.startsWith('=') && isAggregate && dateWindowRequested) {
+      const normalizedDateTaskText = taskText.replace(/[_\s]+/g, ' ');
+      const dateColumns = caseStudy.dataset.columns.filter((column) =>
+        column.type === 'date',
+      );
+      const mentionedDateColumn = dateColumns.find((column) =>
+        containsWholeValue(normalizedDateTaskText, column.name.replace(/[_\s]+/g, ' ')),
+      ) ?? (dateColumns.length === 1 ? dateColumns[0] : undefined);
+      if (!mentionedDateColumn && dateColumns.length > 1) {
+        issues.push(
+          `tugas ${task.no} meminta agregasi berdasarkan periode, tetapi tidak menentukan kolom tanggal yang digunakan`,
+        );
+      }
+      if (
+        mentionedDateColumn &&
+        (/\b(tanggal|tgl|date|waktu)\b/i.test(normalizedDateTaskText) ||
+          dateColumns.length === 1 ||
+          containsWholeValue(normalizedDateTaskText, mentionedDateColumn.name.replace(/[_\s]+/g, ' ')))
+      ) {
+        const dateColumnIndex = caseStudy.dataset.columns.indexOf(mentionedDateColumn);
+        const dateColumnLetter = getExcelColumnName(dateColumnIndex);
+        const formulaReferencesDateColumn = caseStudy.formulaStyle === 'modern'
+          ? formula.includes(`[${mentionedDateColumn.name}]`)
+          : new RegExp(`\\$?${dateColumnLetter}\\$?\\d+`, 'i').test(formula);
+        const hasDateWindowBounds = formula.includes('>=') && formula.includes('<=');
+        if (!formulaReferencesDateColumn || !hasDateWindowBounds) {
+          issues.push(
+            `kunci tugas ${task.no} meminta agregasi periode, tetapi rumus harus merujuk kolom ${mentionedDateColumn.name} dan menerapkan batas tanggal >= dan <=`,
+          );
+        }
+      }
     }
 
     if (
