@@ -163,6 +163,13 @@ function generateCellValue(
     return faker.helpers.arrayElement(['Jakarta', 'Bandung', 'Surabaya', 'Semarang', 'Medan', 'Makassar']);
   }
 
+  // Time columns (Jam, Waktu, etc.)
+  if (colNameLower.includes('jam') || colNameLower.includes('waktu') || colNameLower.includes('time')) {
+    const hour = faker.number.int({ min: 7, max: 18 });
+    const minute = faker.helpers.arrayElement([0, 15, 30, 45]);
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  }
+
   return faker.lorem.words(2);
 }
 
