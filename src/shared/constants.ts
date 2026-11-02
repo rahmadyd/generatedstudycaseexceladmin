@@ -344,6 +344,7 @@ export const ROLE_PROFILES: Record<string, {
   label: string;
   description: string;
   signals: string[];
+  specificSignals: string[];
   datasetSignals: string[];
 }> = Object.fromEntries(
   ADMIN_ROLES.map((role) => [role.id, {
@@ -358,9 +359,18 @@ export const ROLE_PROFILES: Record<string, {
       'Sekretaris/Surat': ['surat', 'agenda', 'dokumen', 'disposisi', 'jadwal', 'arsip'],
       'MBG': ['laporan', 'kinerja', 'keuangan', 'operasional', 'grup', 'kpi'],
     } as Record<string, string[]>)[role.id] ?? [role.label.toLocaleLowerCase('id')],
+    specificSignals: ({
+      'Penjualan': ['penjualan', 'omzet', 'piutang', 'order pelanggan', 'pesanan pelanggan', 'invoice penjualan', 'harga jual'],
+      'Inventory/Gudang': ['stok', 'persediaan', 'barang masuk', 'barang keluar', 'mutasi stok', 'stok opname', 'gudang', 'stok awal', 'stok akhir'],
+      'HRD/Absensi': ['pegawai', 'karyawan', 'personalia', 'absensi', 'kehadiran', 'cuti', 'lembur', 'shift', 'jam masuk', 'penggajian'],
+      'Keuangan/Kasir': ['kas masuk', 'kas keluar', 'keuangan', 'rekonsiliasi', 'pembayaran', 'pengeluaran', 'anggaran', 'biaya operasional', 'saldo kas'],
+      'Pengadaan': ['pengadaan', 'pembelian', 'purchase order', 'vendor', 'pemasok', 'harga beli', 'qty pesan', 'pemesanan barang'],
+      'Sekretaris/Surat': ['surat', 'dokumen', 'agenda', 'disposisi', 'arsip', 'perihal', 'nomor surat', 'tanggal surat'],
+      'MBG': ['kpi', 'indikator kinerja', 'laporan operasional', 'target', 'realisasi', 'penerima manfaat', 'biaya operasional'],
+    } as Record<string, string[]>)[role.id] ?? [role.label.toLocaleLowerCase('id')],
     datasetSignals: ({
-      'Penjualan': ['penjualan', 'order', 'transaksi', 'pelanggan', 'customer', 'omzet', 'subtotal', 'piutang', 'harga_jual', 'total_bayar', 'metode_pembayaran'],
-      'Inventory/Gudang': ['stok', 'persediaan', 'barang', 'gudang', 'mutasi', 'opname', 'stok_awal', 'stok_masuk', 'stok_keluar', 'stok_akhir', 'saldo', 'batch', 'tanggal_kedaluwarsa'],
+      'Penjualan': ['penjualan', 'order pelanggan', 'transaksi penjualan', 'pelanggan', 'customer', 'omzet', 'subtotal', 'piutang', 'harga_jual', 'total_bayar', 'metode_pembayaran'],
+      'Inventory/Gudang': ['stok', 'persediaan', 'gudang', 'mutasi', 'opname', 'stok_awal', 'stok_masuk', 'stok_keluar', 'stok_akhir', 'batch', 'tanggal_kedaluwarsa'],
       'HRD/Absensi': ['pegawai', 'karyawan', 'personalia', 'kehadiran', 'absensi', 'absen', 'cuti', 'lembur', 'shift', 'jam_masuk', 'jam_pulang', 'departemen'],
       'Keuangan/Kasir': ['kas', 'keuangan', 'pembayaran', 'pengeluaran', 'anggaran', 'rekonsiliasi', 'nominal', 'biaya', 'pemasukan', 'saldo', 'total_bayar', 'metode_pembayaran'],
       'Pengadaan': ['pengadaan', 'pembelian', 'vendor', 'pemasok', 'purchase_order', 'nomor_po', 'harga_beli', 'qty_pesan', 'tanggal_pemesanan', 'material'],
@@ -368,7 +378,7 @@ export const ROLE_PROFILES: Record<string, {
       'MBG': ['kpi', 'unit', 'grup', 'pendapatan', 'operasional', 'laporan', 'target', 'realisasi', 'penerima_manfaat', 'biaya_operasional', 'indikator_kinerja'],
     } as Record<string, string[]>)[role.id] ?? [role.label.toLocaleLowerCase('id')],
   }]),
-) as Record<string, { label: string; description: string; signals: string[]; datasetSignals: string[] }>;
+) as Record<string, { label: string; description: string; signals: string[]; specificSignals: string[]; datasetSignals: string[] }>;
 
 export function getRecommendedTaskCount(level: Level, _industry: Industry): number {
   return GENERATION_CONFIG[level].defaultTasks;

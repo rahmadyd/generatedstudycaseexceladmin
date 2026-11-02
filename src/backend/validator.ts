@@ -9,8 +9,10 @@ export interface ValidationResult {
 }
 
 function containsAny(text: string, terms: string[]): boolean {
-  const normalized = text.toLocaleLowerCase('id');
-  return terms.some((term) => normalized.includes(term.toLocaleLowerCase('id')));
+  const normalize = (value: string) =>
+    value.toLocaleLowerCase('id').replace(/[_-]+/g, ' ');
+  const normalized = normalize(text);
+  return terms.some((term) => normalized.includes(normalize(term)));
 }
 
 function containsWholeValue(text: string, value: string): boolean {
@@ -150,6 +152,10 @@ export function getCaseStudyAlignmentIssues(
     caseStudy.scenario,
     ...caseStudy.tasks.flatMap((task) => [task.instruction, task.hint, task.targetResult]),
   ].join(' ');
+  const taskNarrative = caseStudy.tasks
+    .flatMap((task) => [task.instruction, task.hint])
+    .join(' ');
+  const title = caseStudy.title;
   const datasetDescription = [
     ...caseStudy.dataset.columns.flatMap((column) => [column.name, ...(column.values ?? [])]),
   ].join(' ');
@@ -158,8 +164,28 @@ export function getCaseStudyAlignmentIssues(
     issues.push(`skenario dan tugas tidak menunjukkan tanggung jawab ${profile.label}`);
   }
 
+  if (profile && !containsAny(taskNarrative, profile.specificSignals)) {
+    issues.push(`instruksi tugas tidak cukup spesifik untuk bidang admin ${profile.label}`);
+  }
+
+  if (profile) {
+    const conflictingTitleRoles = Object.entries(ROLE_PROFILES)
+      .filter(([candidateRole, candidateProfile]) =>
+        candidateRole !== role && containsAny(title, candidateProfile.specificSignals),
+      )
+      .map(([, candidateProfile]) => candidateProfile.label);
+    if (
+      conflictingTitleRoles.length > 0 &&
+      !containsAny(title, profile.specificSignals)
+    ) {
+      issues.push(
+        `judul "${caseStudy.title}" mengarah ke ${conflictingTitleRoles.join('/')} bukan ${profile.label}`,
+      );
+    }
+  }
+
   if (profile && !containsAny(datasetDescription, profile.datasetSignals)) {
-    issues.push(`kolom dataset tidak terlihat sesuai dengan bidang admin ${profile?.label ?? role}`);
+    issues.push(`kolom dataset tidak cukup spesifik untuk bidang admin ${profile.label}`);
   }
 
   const industryProfile = INDUSTRY_PROFILES[industry];

@@ -10,6 +10,7 @@ Keep each hint within {{hintMaxChars}} characters and each answer explanation wi
 
 RULES
 - Write in Indonesian and stay specific to the selected role and industry.
+- The title and every task must match the selected administrative role; do not generate a sales case for inventory, an HR case for finance, or otherwise switch roles. A generic word such as "barang", "data", "transaksi", or "operasional" alone does not establish role alignment.
 - Make both the selected admin role and industry's context visible in the dataset schema itself: include at least one field relevant to the role and at least one concrete product, service, or category from the supplied industry profile. The scenario alone is not enough.
 - Use the supplied industry profile's product/service/category examples for realistic enum values. Keep every task criterion consistent with the final dataset headers and enum values.
 - The generated dataset schema is the only source-data table/sheet. Do not invent lookup tables or sheets.
