@@ -53,10 +53,11 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
 9. **Integrasi Groq API**:
    - Generate menggunakan hanya `GROQ_API_KEY` dari environment variable server.
    - API key tidak dikirim dari browser atau disimpan di `localStorage`; OpenAI tidak digunakan sebagai fallback.
-   - Model default `openai/gpt-oss-120b`; model utama dan cadangan dapat diatur melalui `GROQ_MODEL` dan `GROQ_FALLBACK_MODEL`.
+   - Model default `llama-3.1-8b-instant`; model utama dan cadangan dapat diatur melalui `GROQ_MODEL` dan `GROQ_FALLBACK_MODEL`.
    - Jumlah tugas dibatasi sesuai level agar respons lebih ringkas: Easy 3–4, Middle 4–5, Advance 4–5.
    - Generate Advance dipisah menjadi tahap kasus dan kunci jawaban. Jika tahap kunci gagal, kasus yang sudah berhasil dibuat tetap dapat digunakan dan kunci dapat dicoba ulang.
-   - Skenario, instruksi tugas, skema dataset, dan kunci jawaban dibuat oleh Groq dalam JSON mode. Setiap klik generate mendapat seed baru; tema disesuaikan dengan role dan riwayat tema dari kasus tersimpan dikirim agar variasi tidak berulang. Jika respons tidak valid atau tidak selaras, aplikasi mencoba perbaikan maksimal dua kali tanpa mengganti hasil dengan template lokal. Error 429/5xx, JSON tidak valid, dan error lain ditampilkan di UI; model fallback yang dikonfigurasi hanya dicoba untuk 429/5xx.
+   - Skenario, instruksi tugas, skema dataset, dan kunci jawaban dibuat oleh Groq dalam JSON mode. Setiap klik generate mendapat seed baru; tema disesuaikan dengan role dan riwayat tema dari kasus tersimpan dikirim agar variasi tidak berulang. Jika respons tidak valid atau tidak selaras, aplikasi mencoba satu kali perbaikan tanpa mengganti hasil dengan template lokal. Error 401, 429, 5xx, dan JSON tidak valid ditampilkan terpisah di UI. Untuk jalur Easy/Middle, generate biasanya satu panggilan dan paling banyak dua percobaan; Advance membuat kasus dan kunci secara bertahap. Fallback hanya menambah panggilan bila `GROQ_FALLBACK_MODEL` disetel.
+   - Tidak ada jeda UI setelah Generate sukses. Perlindungan aplikasi membatasi maksimum 15 permintaan Generate valid per menit per IP pada instance server; error ini diberi kode/pesan terpisah dari kuota Groq. Jika Groq memberikan `Retry-After` atau reset limit, UI menggunakan estimasi tersebut; tanpa header reset, UI tidak membuat countdown perkiraan.
    - Request generate menggunakan `cache: no-store`; route POST bersifat dynamic dan mengirim header `Cache-Control: no-store`. Log sementara `[generate]` di browser dan server mencatat pilihan, tema, seed, serta judul hasil (tanpa API key atau isi prompt).
    - Log pemakaian Groq memuat timestamp UTC. Ekspor log JSONL dari Vercel dapat diringkas per tanggal/level dengan `npm run report:groq -- <path-log-jsonl>`; laporan memuat rata-rata token, kegagalan panggilan provider, dan jumlah 429 tanpa database tambahan.
 
@@ -137,7 +138,7 @@ generatedstudycaseexceladmin/
 
 3. Atur API key Groq di environment server:
    ```bash
-   GROQ_API_KEY=gsk_...
+   GROQ_API_KEY=your_groq_api_key_here
    ```
    Untuk lokal, simpan pada `.env.local`. Untuk production, atur sebagai environment variable server di Vercel. Generate selalu menggunakan Groq dan tidak menerima API key dari browser atau fallback ke OpenAI maupun template kasus lokal.
 
@@ -171,7 +172,7 @@ Di project Vercel, buka **Settings → Environment Variables** dan tambahkan:
 Pilih environment yang digunakan (Production/Preview/Development), simpan, lalu redeploy agar variable diterapkan. Aplikasi hanya memakai `GROQ_API_KEY` server dan endpoint Groq.
 
 Variabel model opsional:
-- `GROQ_MODEL`: model utama; default `openai/gpt-oss-120b`.
+- `GROQ_MODEL`: model utama; default `llama-3.1-8b-instant`. Set variabel ini untuk memilih model lain.
 - `GROQ_FALLBACK_MODEL`: model alternatif Groq. Sebaiknya berbeda dari model utama agar fallback punya kuota model tersendiri. Jika tidak disetel, fallback dinonaktifkan.
 
 Model `gpt-oss` dikirim dengan `reasoning_effort: low`. Untuk model lain, parameter tersebut tidak dikirim.

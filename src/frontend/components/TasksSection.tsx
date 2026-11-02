@@ -31,6 +31,7 @@ interface TasksSectionProps {
   onRegenerateTask: (taskNo: number) => Promise<void>;
   regeneratingTaskNo: number | null;
   regenerateRetryAfterSeconds: number;
+  regenerateRateLimitMessage: string | null;
   onRetryMissingContent: () => Promise<void>;
   isCompletingMissingContent: boolean;
   missingContentRetryAfterSeconds: number;
@@ -44,6 +45,7 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
   onRegenerateTask,
   regeneratingTaskNo,
   regenerateRetryAfterSeconds,
+  regenerateRateLimitMessage,
   onRetryMissingContent,
   isCompletingMissingContent,
   missingContentRetryAfterSeconds,
@@ -215,9 +217,9 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
               </div>
             </div>
           )}
-          {regenerateRetryAfterSeconds > 0 && (
+          {(regenerateRetryAfterSeconds > 0 || regenerateRateLimitMessage) && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-              Batas penggunaan AI tercapai. Coba ganti tugas lagi dalam {regenerateRetryAfterSeconds} detik.
+              {regenerateRateLimitMessage || 'Permintaan dibatasi.'}
             </div>
           )}
           {caseStudy.tasks.map((task) => {

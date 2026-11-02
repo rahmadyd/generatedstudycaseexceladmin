@@ -9,7 +9,11 @@
 - Kasus lama dihapus dari tampilan ketika generate dimulai. Error HTTP 429, error provider, parse JSON, dan schema tampil di UI. Loading state dan key seed memaksa tampilan hasil baru di-mount ulang.
 - Fallback model yang dikonfigurasi dicoba hanya untuk HTTP 429 atau 5xx; error lain tidak mengganti model secara diam-diam. Jika fallback tidak dikonfigurasi, error asli ditampilkan.
 - Log `[generate]` di browser dan server berisi request ID, pilihan role/industri/level, jumlah tema terakhir, seed, tema terpilih, judul, dan jumlah tugas. Jangan memasukkan API key atau isi prompt ke log.
-- Batas `max_tokens` diturunkan: Easy 2.000, Middle 2.400, Advance 2.300; repair masing-masing 2.600/3.200/3.200; tahap kasus Advance 2.100 dan tahap kunci 900.
+- Model default sekarang `llama-3.1-8b-instant`; `GROQ_MODEL` dapat memilih model lain. Perbaikan validasi dibatasi satu retry, dan batas token output diturunkan lagi; detail angka aktif ada di `src/shared/generation-config.ts`.
+- Jeda 5 detik di server dan cooldown sukses di UI dihapus. Batas aplikasi 15 permintaan Generate valid/menit tetap ada, tetapi memakai `APP_RATE_LIMITED` agar tidak tertukar dengan 429 Groq (`AI_RATE_LIMITED`).
+- Untuk 429 Groq, log server menyertakan status, `Retry-After`, dan seluruh header `x-ratelimit-*`. UI countdown hanya memakai `Retry-After` atau reset header yang tersedia; tidak ada lagi fallback 30 detik yang menyesatkan.
+- Jalur Easy/Middle biasanya memanggil Groq sekali dan maksimal dua kali tanpa fallback (satu repair); dengan fallback yang dikonfigurasi, batasnya empat panggilan provider. Advance biasanya dua panggilan serial (kasus + kunci), maksimal empat tanpa fallback atau delapan dengan fallback. Fallback menambah maksimal satu panggilan serial untuk setiap percobaan yang menerima 429/5xx.
+- Batas `max_tokens` aktif: Easy 1.500 (repair 1.800), Middle 1.800 (repair 2.200), Advance 1.800 (repair 2.200; tahap kasus 1.600 dan kunci 700). Nilai ini menjaga ruang bagi JSON berisi 4–5 tugas tanpa kembali ke batas lama yang lebih tinggi.
 
 ## Baseline kode sebelum optimasi (historis)
 
@@ -27,13 +31,19 @@
 - API key: hanya `GROQ_API_KEY` dari environment server. Key tidak dicatat dalam log.
 - Batas API internal generate: 15 request/menit per IP; regenerate: 20 request/menit per IP. Guard tambahan membatasi tiap klien satu request setiap 5 detik pada instance yang sama. Ini bukan limit kuota Groq dan state-nya tidak dibagi antar-instance Vercel.
 
+## Audit limit, error, dan penggunaan key (2026-11)
+
+- Pesan “Batas penggunaan AI tercapai. Coba lagi setelah batas Groq direset” berasal dari catch HTTP 429 provider Groq; limiter aplikasi memakai pesan berbeda. Pesan lama menyembunyikan header dan memakai countdown fallback 30 detik saat `Retry-After` kosong.
+- Key hanya dibaca server melalui `process.env.GROQ_API_KEY`; key browser BYOK lama dibersihkan, dan tidak ada key yang di-hardcode pada kode aplikasi. `/api/health` hanya memastikan variabel tersedia, bukan memvalidasi key atau kuota.
+- Status 401, 429, 5xx, dan output JSON tidak valid dipetakan ke pesan/kode UI terpisah. Penggantian key yang menghasilkan 429 perlu diperiksa pada quota/usage Groq; untuk Vercel, pastikan environment yang benar dan redeploy.
+
 ## Instrumentasi
 
 Setiap respons provider mencatat JSON log `groq_completion` di log fungsi server:
 
 - `requestId`, `level`, `callNumber` (percobaan AI di service), `providerCallNumber` (panggilan provider di dalam percobaan), `model`, dan status HTTP.
 - Untuk respons sukses: object `usage` berisi `prompt_tokens`, `completion_tokens`, dan `total_tokens`, jika dikirim oleh Groq.
-- Untuk respons gagal: pesan error Groq, `retry-after`, serta header remaining/reset request dan token bila tersedia.
+- Untuk respons gagal: pesan error Groq, `retry-after`, dan seluruh header `x-ratelimit-*` bila tersedia.
 
 Jangan menambahkan API key, header Authorization, atau isi prompt ke log.
 
@@ -49,7 +59,7 @@ Jangan menambahkan API key, header Authorization, atau isi prompt ke log.
 - Model default sekarang `openai/gpt-oss-120b`; model reasoning menerima `reasoning_effort: low`. `GROQ_MODEL` tetap dapat menimpa model default.
 - Pengukuran aktual sebelum/sesudah tetap pending sampai log token produksi tersedia. Batas `max_tokens` adalah batas keluaran, bukan token aktual yang digunakan.
 
-## Resilience fase 2
+## Resilience fase 2 (perilaku historis sebelum audit limit)
 
 - Validasi/format dapat memicu maksimal satu repair, sehingga jalur satu-tahap (Easy/Middle) memiliki paling banyak dua percobaan generate utama.
 - Mode JSON dimatikan pada fase historis ini; pada perbaikan alur generate terbaru, JSON mode diaktifkan untuk semua panggilan pembuatan konten.

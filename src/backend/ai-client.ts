@@ -18,9 +18,18 @@ export class GroqApiError extends Error {
     readonly status: number,
     readonly providerCode?: string,
     readonly retryAfterSeconds?: number,
+    readonly providerMessage?: string,
+    readonly rateLimitHeaders?: Record<string, string>,
   ) {
     super(message);
     this.name = 'GroqApiError';
+  }
+}
+
+export class GroqResponseParseError extends Error {
+  constructor() {
+    super('Groq mengembalikan respons yang bukan JSON valid.');
+    this.name = 'GroqResponseParseError';
   }
 }
 
@@ -39,6 +48,46 @@ function parseRetryAfterSeconds(value: string | null): number | undefined {
   const retryAt = Date.parse(value);
   if (!Number.isFinite(retryAt)) return undefined;
   return Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
+}
+
+function parseResetDurationSeconds(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parts = Array.from(value.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h)/g));
+  if (parts.length === 0 || parts.map((part) => part[0]).join('') !== value) return undefined;
+  const seconds = parts.reduce((total, part) => {
+    const amount = Number(part[1]);
+    const multiplier = part[2] === 'h' ? 3600 : part[2] === 'm' ? 60 : part[2] === 'ms' ? 0.001 : 1;
+    return total + amount * multiplier;
+  }, 0);
+  return Math.max(0, Math.ceil(seconds));
+}
+
+function getRateLimitHeaders(response: Response): Record<string, string> {
+  const headers: Record<string, string> = {};
+  response.headers.forEach((value, name) => {
+    if (name.toLocaleLowerCase('en').startsWith('x-ratelimit-')) {
+      headers[name] = value;
+    }
+  });
+  return headers;
+}
+
+function getRetryAfterSeconds(
+  response: Response,
+  rateLimitHeaders: Record<string, string>,
+): number | undefined {
+  const retryAfter = parseRetryAfterSeconds(response.headers.get('retry-after'));
+  if (retryAfter !== undefined) return retryAfter;
+
+  const remainingRequests = Number(rateLimitHeaders['x-ratelimit-remaining-requests']);
+  const remainingTokens = Number(rateLimitHeaders['x-ratelimit-remaining-tokens']);
+  const resetRequests = parseResetDurationSeconds(rateLimitHeaders['x-ratelimit-reset-requests']);
+  const resetTokens = parseResetDurationSeconds(rateLimitHeaders['x-ratelimit-reset-tokens']);
+  const exhaustedLimitResets = [
+    remainingRequests === 0 ? resetRequests : undefined,
+    remainingTokens === 0 ? resetTokens : undefined,
+  ].filter((value): value is number => value !== undefined);
+  return exhaustedLimitResets.length > 0 ? Math.max(...exhaustedLimitResets) : undefined;
 }
 
 async function logGroqResponse(
@@ -89,13 +138,11 @@ async function logGroqResponse(
     console.warn('Groq error response was not JSON:', (error as Error).message);
   }
 
+  const rateLimitHeaders = getRateLimitHeaders(response);
   console.log(JSON.stringify({
     ...baseLog,
     retryAfter: response.headers.get('retry-after'),
-    remainingTokens: response.headers.get('x-ratelimit-remaining-tokens'),
-    remainingRequests: response.headers.get('x-ratelimit-remaining-requests'),
-    resetTokens: response.headers.get('x-ratelimit-reset-tokens'),
-    resetRequests: response.headers.get('x-ratelimit-reset-requests'),
+    rateLimitHeaders,
     providerMessage,
   }));
 }
@@ -130,7 +177,7 @@ function getGroqApiKey(): string | null {
 
 function getGroqPrimaryModel(): string {
   const configured = process.env.GROQ_MODEL?.trim();
-  return configured && configured.length > 0 ? configured : 'openai/gpt-oss-120b';
+  return configured && configured.length > 0 ? configured : 'llama-3.1-8b-instant';
 }
 
 function getGroqFallbackModel(primaryModel?: string): string {
@@ -222,23 +269,46 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
       console.warn('Unable to parse Groq error payload:', (error as Error).message);
     }
 
+    const rateLimitHeaders = getRateLimitHeaders(response);
+    const retryAfterSeconds = response.status === 429
+      ? getRetryAfterSeconds(response, rateLimitHeaders)
+      : undefined;
     if (response.status === 429) {
       throw new GroqApiError(
-        'Batas penggunaan Groq tercapai.',
+        'Groq mengembalikan HTTP 429 (rate limit atau kuota).',
         429,
         providerCode,
-        parseRetryAfterSeconds(response.headers.get('retry-after')),
+        retryAfterSeconds,
+        parsedMsg,
+        rateLimitHeaders,
       );
     }
     if (response.status === 401) {
-      throw new Error(
-        'GROQ_API_KEY ditolak Groq (401). Pastikan key valid dan sudah diatur pada environment deployment Vercel yang aktif, lalu redeploy.'
+      throw new GroqApiError(
+        'Groq menolak GROQ_API_KEY (HTTP 401). Periksa environment deployment dan redeploy.',
+        401,
+        providerCode,
+        undefined,
+        parsedMsg,
+        rateLimitHeaders,
       );
     }
-    throw new Error(`AI Error (${response.status}): ${parsedMsg}`);
+    throw new GroqApiError(
+      `Groq mengembalikan HTTP ${response.status}: ${parsedMsg}`,
+      response.status,
+      providerCode,
+      undefined,
+      parsedMsg,
+      rateLimitHeaders,
+    );
   }
 
-  const json = await response.json();
+  let json: { choices?: Array<{ finish_reason?: string; message?: { content?: string } }> };
+  try {
+    json = await response.json();
+  } catch {
+    throw new GroqResponseParseError();
+  }
   if (json.choices?.[0]?.finish_reason === 'length') {
     throw new GroqOutputTruncatedError();
   }

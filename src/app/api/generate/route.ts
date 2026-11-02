@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GenerateRequestSchema } from '@/shared/schema';
 import { generateCaseStudyService } from '@/backend/task-service';
-import { checkMinimumInterval, checkRateLimit } from '@/backend/rate-limit';
-import { GroqApiError } from '@/backend/ai-client';
+import { checkRateLimit } from '@/backend/rate-limit';
+import { GroqApiError, GroqResponseParseError } from '@/backend/ai-client';
 import {
   GENERATION_CONFIG,
-  GENERATION_MIN_INTERVAL_MS,
   GENERATION_RATE_LIMIT_REQUESTS,
   GENERATION_RATE_LIMIT_WINDOW_MS,
-  GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
 } from '@/shared/generation-config';
 
 export const dynamic = 'force-dynamic';
@@ -19,30 +17,6 @@ const NO_STORE_HEADERS = { 'Cache-Control': 'no-store, max-age=0' };
 export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
-    const cooldownCheck = checkMinimumInterval(`generate:${ip}`, GENERATION_MIN_INTERVAL_MS);
-    if (!cooldownCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: 'Permintaan terlalu cepat. Silakan tunggu sebelum mencoba lagi.',
-          code: 'RATE_LIMITED',
-          retryAfterSeconds: cooldownCheck.retryAfterSec ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
-        },
-        { status: 429, headers: NO_STORE_HEADERS },
-      );
-    }
-
-    const rateCheck = checkRateLimit(ip, GENERATION_RATE_LIMIT_REQUESTS, GENERATION_RATE_LIMIT_WINDOW_MS);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: `Terlalu banyak permintaan generate. Silakan tunggu ${rateCheck.retryAfterSec} detik sebelum mencoba lagi.`,
-          code: 'RATE_LIMITED',
-          retryAfterSeconds: rateCheck.retryAfterSec ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
-        },
-        { status: 429, headers: NO_STORE_HEADERS }
-      );
-    }
-
     const body = await req.json();
 
     const parseResult = GenerateRequestSchema.safeParse(body);
@@ -54,6 +28,22 @@ export async function POST(req: NextRequest) {
     }
 
     const request = parseResult.data;
+    const rateCheck = checkRateLimit(
+      `generate:${req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1'}`,
+      GENERATION_RATE_LIMIT_REQUESTS,
+      GENERATION_RATE_LIMIT_WINDOW_MS,
+    );
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Batas perlindungan aplikasi tercapai (${GENERATION_RATE_LIMIT_REQUESTS} permintaan per menit). Coba lagi dalam ${rateCheck.retryAfterSec} detik.`,
+          code: 'APP_RATE_LIMITED',
+          retryAfterSeconds: rateCheck.retryAfterSec,
+        },
+        { status: 429, headers: NO_STORE_HEADERS },
+      );
+    }
+
     const clientRequestId = req.headers.get('x-client-request-id')?.slice(0, 80);
     console.log('[api/generate] accepted', JSON.stringify({
       clientRequestId,
@@ -83,13 +73,57 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('API /api/generate error:', error);
     if (error instanceof GroqApiError && error.status === 429) {
+      const waitMessage = error.retryAfterSeconds === undefined
+        ? 'Groq tidak menyertakan estimasi waktu reset pada header.'
+        : `Coba lagi dalam sekitar ${error.retryAfterSeconds} detik.`;
       return NextResponse.json(
         {
-          error: 'Batas penggunaan AI tercapai. Coba lagi setelah batas Groq direset.',
-          code: 'RATE_LIMITED',
-          retryAfterSeconds: error.retryAfterSeconds ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
+          error: `Groq menolak permintaan karena rate limit/kuota (HTTP 429). ${waitMessage}`,
+          code: 'AI_RATE_LIMITED',
+          retryAfterSeconds: error.retryAfterSeconds,
+          providerMessage: error.providerMessage,
+          rateLimitHeaders: error.rateLimitHeaders,
         },
-        { status: 429, headers: NO_STORE_HEADERS },
+        {
+          status: 429,
+          headers: {
+            ...NO_STORE_HEADERS,
+            ...(error.retryAfterSeconds === undefined
+              ? {}
+              : { 'Retry-After': String(error.retryAfterSeconds) }),
+          },
+        },
+      );
+    }
+    if (error instanceof GroqApiError && error.status === 401) {
+      return NextResponse.json(
+        {
+          error: 'Autentikasi Groq gagal (HTTP 401). Periksa GROQ_API_KEY pada environment server yang aktif, lalu restart atau redeploy.',
+          code: 'AI_AUTHENTICATION_ERROR',
+        },
+        { status: 401, headers: NO_STORE_HEADERS },
+      );
+    }
+    if (error instanceof GroqApiError && error.status >= 500) {
+      return NextResponse.json(
+        {
+          error: `Layanan Groq sedang mengalami gangguan (HTTP ${error.status}). Coba lagi nanti.`,
+          code: 'AI_PROVIDER_UNAVAILABLE',
+        },
+        { status: 502, headers: NO_STORE_HEADERS },
+      );
+    }
+    if (error instanceof GroqResponseParseError ||
+      (error instanceof Error && (
+        error.message.includes('Gagal parse JSON dari AI') ||
+        error.message.includes('bukan JSON valid')
+      ))) {
+      return NextResponse.json(
+        {
+          error: 'Groq mengembalikan output yang bukan JSON valid setelah percobaan perbaikan. Silakan coba generate ulang.',
+          code: 'AI_INVALID_JSON',
+        },
+        { status: 502, headers: NO_STORE_HEADERS },
       );
     }
     const message = (error as Error).message || 'Terjadi kesalahan internal server saat generate soal.';

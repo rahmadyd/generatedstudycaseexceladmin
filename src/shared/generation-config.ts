@@ -16,8 +16,8 @@ export interface GenerationLevelConfig {
 
 export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
   easy: {
-    maxTokens: 2000,
-    repairMaxTokens: 2600,
+    maxTokens: 1500,
+    repairMaxTokens: 1800,
     regenerateMaxTokens: 800,
     minTasks: 3,
     maxTasks: 4,
@@ -27,8 +27,8 @@ export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
     hintMaxChars: 140,
   },
   middle: {
-    maxTokens: 2400,
-    repairMaxTokens: 3200,
+    maxTokens: 1800,
+    repairMaxTokens: 2200,
     regenerateMaxTokens: 1000,
     minTasks: 4,
     maxTasks: 5,
@@ -38,11 +38,11 @@ export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
     hintMaxChars: 160,
   },
   advance: {
-    maxTokens: 2300,
-    repairMaxTokens: 3200,
+    maxTokens: 1800,
+    repairMaxTokens: 2200,
     regenerateMaxTokens: 1200,
-    stagedCaseMaxTokens: 2100,
-    stagedAnswerKeyMaxTokens: 900,
+    stagedCaseMaxTokens: 1600,
+    stagedAnswerKeyMaxTokens: 700,
     minTasks: 4,
     maxTasks: 5,
     defaultTasks: 5,
@@ -56,12 +56,8 @@ export function getTaskCountOptions(level: Level): number[] {
   return GENERATION_CONFIG[level].taskCountOptions;
 }
 
-export const GENERATION_REPAIR_ATTEMPTS = 2;
+export const GENERATION_REPAIR_ATTEMPTS = 1;
 export const GENERATION_RATE_LIMIT_REQUESTS = 15;
 export const REGENERATE_RATE_LIMIT_REQUESTS = 20;
 export const ANSWER_KEY_RATE_LIMIT_REQUESTS = 20;
 export const GENERATION_RATE_LIMIT_WINDOW_MS = 60_000;
-export const GENERATION_MIN_INTERVAL_MS = 5_000;
-export const GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS = 30;
-export const GENERATION_GUARD_STATE_RETENTION_MS = 600_000;
-export const GENERATION_SUCCESS_COOLDOWN_SECONDS = GENERATION_MIN_INTERVAL_MS / 1000;

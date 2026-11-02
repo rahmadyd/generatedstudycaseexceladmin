@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RegenerateTaskRequestSchema } from '@/shared/schema';
 import { regenerateTaskService } from '@/backend/task-service';
-import { checkMinimumInterval, checkRateLimit } from '@/backend/rate-limit';
-import { GroqApiError } from '@/backend/ai-client';
+import { checkRateLimit } from '@/backend/rate-limit';
+import { GroqApiError, GroqResponseParseError } from '@/backend/ai-client';
 import {
-  GENERATION_MIN_INTERVAL_MS,
   GENERATION_RATE_LIMIT_WINDOW_MS,
-  GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
   REGENERATE_RATE_LIMIT_REQUESTS,
 } from '@/shared/generation-config';
 
@@ -16,30 +14,6 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
-    const cooldownCheck = checkMinimumInterval(`regenerate:${ip}`, GENERATION_MIN_INTERVAL_MS);
-    if (!cooldownCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: 'Permintaan terlalu cepat. Silakan tunggu sebelum mencoba lagi.',
-          code: 'RATE_LIMITED',
-          retryAfterSeconds: cooldownCheck.retryAfterSec ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
-        },
-        { status: 429 },
-      );
-    }
-
-    const rateCheck = checkRateLimit(ip, REGENERATE_RATE_LIMIT_REQUESTS, GENERATION_RATE_LIMIT_WINDOW_MS);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: `Rate limit tercapai. Silakan tunggu ${rateCheck.retryAfterSec} detik.`,
-          code: 'RATE_LIMITED',
-          retryAfterSeconds: rateCheck.retryAfterSec ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
-        },
-        { status: 429 }
-      );
-    }
-
     const body = await req.json();
 
     const parseResult = RegenerateTaskRequestSchema.safeParse(body);
@@ -50,18 +24,64 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const rateCheck = checkRateLimit(
+      `regenerate:${ip}`,
+      REGENERATE_RATE_LIMIT_REQUESTS,
+      GENERATION_RATE_LIMIT_WINDOW_MS,
+    );
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Batas perlindungan aplikasi tercapai (${REGENERATE_RATE_LIMIT_REQUESTS} permintaan per menit). Coba lagi dalam ${rateCheck.retryAfterSec} detik.`,
+          code: 'APP_RATE_LIMITED',
+          retryAfterSeconds: rateCheck.retryAfterSec,
+        },
+        { status: 429 },
+      );
+    }
+
     const updatedCaseStudy = await regenerateTaskService(parseResult.data);
     return NextResponse.json({ success: true, caseStudy: updatedCaseStudy });
   } catch (error) {
     console.error('API /api/regenerate-task error:', error);
     if (error instanceof GroqApiError && error.status === 429) {
+      const waitMessage = error.retryAfterSeconds === undefined
+        ? 'Groq tidak menyertakan estimasi waktu reset pada header.'
+        : `Coba lagi dalam sekitar ${error.retryAfterSeconds} detik.`;
       return NextResponse.json(
         {
-          error: 'Batas penggunaan AI tercapai. Coba lagi setelah batas Groq direset.',
-          code: 'RATE_LIMITED',
-          retryAfterSeconds: error.retryAfterSeconds ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
+          error: `Groq menolak permintaan karena rate limit/kuota (HTTP 429). ${waitMessage}`,
+          code: 'AI_RATE_LIMITED',
+          retryAfterSeconds: error.retryAfterSeconds,
+          providerMessage: error.providerMessage,
+          rateLimitHeaders: error.rateLimitHeaders,
         },
         { status: 429 },
+      );
+    }
+    if (error instanceof GroqApiError && error.status === 401) {
+      return NextResponse.json(
+        {
+          error: 'Autentikasi Groq gagal (HTTP 401). Periksa GROQ_API_KEY pada environment server yang aktif.',
+          code: 'AI_AUTHENTICATION_ERROR',
+        },
+        { status: 401 },
+      );
+    }
+    if (error instanceof GroqApiError && error.status >= 500) {
+      return NextResponse.json(
+        {
+          error: `Layanan Groq sedang mengalami gangguan (HTTP ${error.status}). Coba lagi nanti.`,
+          code: 'AI_PROVIDER_UNAVAILABLE',
+        },
+        { status: 502 },
+      );
+    }
+    if (error instanceof GroqResponseParseError ||
+      (error instanceof Error && error.message.includes('Gagal parse JSON'))) {
+      return NextResponse.json(
+        { error: 'Groq mengembalikan output yang bukan JSON valid.', code: 'AI_INVALID_JSON' },
+        { status: 502 },
       );
     }
     const message = (error as Error).message || 'Gagal meregenerate tugas.';

@@ -6,7 +6,6 @@ import { Level, ExcelVersion, FormulaStyle, GenerateRequest, INDUSTRY_OPTIONS, I
 import { ADMIN_ROLES, getRecommendedAdminRole, getRecommendedTaskCount, LEVEL_CONFIG } from '@/shared/constants';
 import {
   GENERATION_CONFIG,
-  GENERATION_SUCCESS_COOLDOWN_SECONDS,
   getTaskCountOptions,
 } from '@/shared/generation-config';
 
@@ -109,9 +108,9 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
       });
 
       const retryAfterSeconds = result?.retryAfterSeconds;
-      const cooldownSeconds = Math.max(1, retryAfterSeconds ?? GENERATION_SUCCESS_COOLDOWN_SECONDS);
-      setIsRateLimited(retryAfterSeconds !== undefined);
-      setCooldown(cooldownSeconds);
+      const hasRetryAfter = Number.isFinite(retryAfterSeconds) && (retryAfterSeconds ?? 0) > 0;
+      setIsRateLimited(hasRetryAfter);
+      setCooldown(hasRetryAfter ? Math.ceil(retryAfterSeconds ?? 0) : 0);
     } finally {
       submittingRef.current = false;
     }
@@ -395,7 +394,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
             ) : cooldown > 0 ? (
               <span>
                 {isRateLimited
-                  ? `Batas penggunaan AI tercapai — coba lagi dalam ${cooldown} detik`
+                  ? `Permintaan dibatasi — coba lagi dalam ${cooldown} detik`
                   : `Tunggu ${cooldown} detik sebelum generate ulang...`}
               </span>
             ) : !level ? (

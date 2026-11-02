@@ -6,6 +6,7 @@ import {
   GenerateRequest,
   RegenerateTaskRequest,
   Task,
+  TaskSchema,
 } from '../shared/schema';
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
 import {
@@ -17,7 +18,7 @@ import {
   resolveTaskCount,
 } from './prompts';
 import { callGroqChat } from './groq';
-import { GroqApiError, GroqOutputTruncatedError } from './ai-client';
+import { GroqApiError, GroqOutputTruncatedError, GroqResponseParseError } from './ai-client';
 import { GENERATION_CONFIG, GENERATION_REPAIR_ATTEMPTS } from '../shared/generation-config';
 import {
   getCaseStudyAlignmentIssues,
@@ -282,13 +283,7 @@ Generate a new complete case strictly for role=${req.role} and industry=${indust
         retryGuidance = '\n\nRETRY OUTPUT FORMAT: Return one complete compact JSON object only. Shorten all prose and keep the requested schema unchanged.';
       }
       // Provider rejections won't improve by retrying and may worsen rate limits.
-      if (
-        (err instanceof GroqApiError && err.status === 429) ||
-        msg.includes('429') ||
-        msg.includes('401') ||
-        msg.includes('AI Error (404)') ||
-        msg.includes('tidak ditemukan')
-      ) {
+      if (err instanceof GroqApiError || msg.includes('tidak ditemukan')) {
         throw err;
       }
     }
@@ -340,9 +335,19 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     jsonMode: true,
   });
 
-  const parsed = JSON.parse(cleanJsonString(rawResponse));
-  const newTask: Task = parsed.task;
-  const newAnswer = parsed.answerKey;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = parseAIJson(rawResponse, 'Gagal membaca tugas yang dibuat ulang');
+  } catch {
+    throw new GroqResponseParseError();
+  }
+  const taskResult = TaskSchema.safeParse(parsed.task);
+  const answerResult = AnswerKeyItemSchema.safeParse(parsed.answerKey);
+  if (!taskResult.success || !answerResult.success) {
+    throw new Error('Format tugas baru dari AI tidak sesuai schema tugas dan kunci jawaban.');
+  }
+  const newTask: Task = taskResult.data;
+  const newAnswer = answerResult.data;
 
   if (!newTask?.instruction || !newTask?.hint || !newTask?.targetResult || !newAnswer?.formula) {
     throw new Error('Format tugas baru dari AI tidak lengkap (instruksi, petunjuk, target, dan kunci wajib tersedia).');

@@ -14,7 +14,6 @@ import { HistoryModal } from './components/HistoryModal';
 
 import { CaseStudy, GenerateRequest } from '@/shared/schema';
 import { getTaskAnswerAlignmentIssues } from '@/backend/validator';
-import { GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS } from '@/shared/generation-config';
 import { generateDatasetRows } from './utils/dataset-generator';
 import {
   SavedSettings,
@@ -36,6 +35,7 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [regeneratingTaskNo, setRegeneratingTaskNo] = useState<number | null>(null);
   const [regenerateRetryAfterSeconds, setRegenerateRetryAfterSeconds] = useState(0);
+  const [regenerateRateLimitMessage, setRegenerateRateLimitMessage] = useState<string | null>(null);
   const [isCompletingMissingContent, setIsCompletingMissingContent] = useState(false);
   const [missingContentRetryAfterSeconds, setMissingContentRetryAfterSeconds] = useState(0);
   const [missingContentError, setMissingContentError] = useState<string | null>(null);
@@ -206,12 +206,12 @@ export default function App() {
       }
 
       if (!res.ok) {
-        if (data.code === 'RATE_LIMITED') {
-          setErrorMsg(data.error || 'Batas penggunaan AI tercapai. Tunggu sebelum mencoba lagi.');
-          return {
-            retryAfterSeconds:
-              Number(data.retryAfterSeconds) || GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
-          };
+        if (data.code === 'AI_RATE_LIMITED' || data.code === 'APP_RATE_LIMITED') {
+          setErrorMsg(data.error || 'Permintaan dibatasi.');
+          const retryAfterSeconds = Number(data.retryAfterSeconds);
+          return Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+            ? { retryAfterSeconds }
+            : undefined;
         }
         throw new Error(data.error || 'Gagal menghasilkan studi kasus.');
       }
@@ -290,10 +290,11 @@ export default function App() {
         setHistoryList(getSavedCasesHistory());
       }
       if (!res.ok) {
-        if (data.code === 'RATE_LIMITED') {
-          const retryAfterSeconds =
-            Number(data.retryAfterSeconds) || GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS;
-          setMissingContentRetryAfterSeconds(Math.max(1, retryAfterSeconds));
+        if (data.code === 'AI_RATE_LIMITED' || data.code === 'APP_RATE_LIMITED') {
+          const retryAfterSeconds = Number(data.retryAfterSeconds);
+          if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+            setMissingContentRetryAfterSeconds(retryAfterSeconds);
+          }
           setMissingContentError(data.error || 'Batas penggunaan AI tercapai.');
           return;
         }
@@ -321,6 +322,7 @@ export default function App() {
     if (regenerateInFlightRef.current) return;
     regenerateInFlightRef.current = true;
     setRegeneratingTaskNo(taskNo);
+    setRegenerateRateLimitMessage(null);
     try {
       const res = await fetch('/api/regenerate-task', {
         method: 'POST',
@@ -330,16 +332,20 @@ export default function App() {
 
       const data = await res.json();
       if (!res.ok) {
-        if (data.code === 'RATE_LIMITED') {
-          const retryAfterSeconds =
-            Number(data.retryAfterSeconds) || GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS;
-          setRegenerateRetryAfterSeconds(Math.max(1, retryAfterSeconds));
+        if (data.code === 'AI_RATE_LIMITED' || data.code === 'APP_RATE_LIMITED') {
+          setRegenerateRateLimitMessage(data.error || 'Permintaan dibatasi.');
+          const retryAfterSeconds = Number(data.retryAfterSeconds);
+          if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+            setRegenerateRetryAfterSeconds(retryAfterSeconds);
+          }
           return;
         }
         throw new Error(data.error || `Gagal meregenerate tugas #${taskNo}`);
       }
 
       const updatedCase: CaseStudy = data.caseStudy;
+      setRegenerateRetryAfterSeconds(0);
+      setRegenerateRateLimitMessage(null);
       setCaseStudy(updatedCase);
       saveCaseToHistory(updatedCase);
       setHistoryList(getSavedCasesHistory());
@@ -444,6 +450,7 @@ export default function App() {
               onRegenerateTask={handleRegenerateTask}
               regeneratingTaskNo={regeneratingTaskNo}
               regenerateRetryAfterSeconds={regenerateRetryAfterSeconds}
+              regenerateRateLimitMessage={regenerateRateLimitMessage}
               onRetryMissingContent={handleRetryMissingContent}
               isCompletingMissingContent={isCompletingMissingContent}
               missingContentRetryAfterSeconds={missingContentRetryAfterSeconds}

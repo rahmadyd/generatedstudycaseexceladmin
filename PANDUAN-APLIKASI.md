@@ -58,20 +58,21 @@ Kasus yang berhasil dibuat tersimpan di riwayat browser. Pengguna dapat membuka 
 - Aplikasi mengirim permintaan generate dari server ke endpoint Groq.
 - Provider menggunakan environment variable server **`GROQ_API_KEY`**. API key tidak perlu dimasukkan di browser.
 - Pengaturan API key browser yang lama sudah dihapus; saat aplikasi dibuka, key lama yang tersimpan di `localStorage` dibersihkan.
-- Skenario, tugas, schema dataset, dan kunci jawaban dihasilkan oleh AI. Aplikasi tidak memakai bank kasus atau template lokal sebagai hasil generate pengganti. Jika AI tetap menghasilkan output yang tidak selaras setelah dua kali perbaikan, aplikasi menampilkan error dan tidak menyajikan kasus lokal.
+- Skenario, tugas, schema dataset, dan kunci jawaban dihasilkan oleh AI. Aplikasi tidak memakai bank kasus atau template lokal sebagai hasil generate pengganti. Jika AI tetap menghasilkan output yang tidak selaras setelah satu kali perbaikan, aplikasi menampilkan error dan tidak menyajikan kasus lokal.
 - Baris-baris dataset diisi secara deterministik di browser berdasarkan schema kolom dari AI dan seed kasus; setiap klik generate baru mendapat seed UUID unik, sedangkan seed yang dibagikan tetap menghasilkan dataset yang sama.
 - Tema kasus dipilih dari daftar yang sesuai dengan bidang admin dan dibandingkan dengan tema pada riwayat lokal terbaru untuk mengurangi pengulangan.
 - Endpoint generate POST memakai `force-dynamic`, `revalidate = 0`, dan cache browser `no-store`.
 - Respons AI diminta dalam JSON mode dan field wajib yang hilang ditolak, bukan diisi dengan tugas atau rumus placeholder. Error generate, parse JSON, dan batas kuota ditampilkan tanpa mempertahankan kasus lama sebagai hasil baru.
-- Model utama default adalah `openai/gpt-oss-120b`; model dapat dikonfigurasi melalui `GROQ_MODEL`.
+- Model utama default adalah `llama-3.1-8b-instant`; model dapat dikonfigurasi melalui `GROQ_MODEL`.
 - `GROQ_FALLBACK_MODEL` dapat digunakan untuk menentukan model alternatif Groq. Sebaiknya berbeda dari model utama; jika tidak disetel, fallback dinonaktifkan.
 - Model dengan nama `gpt-oss` dikirim dengan `reasoning_effort: low`.
 - Jumlah tugas dibatasi per level untuk mengurangi ukuran respons: Easy 3–4, Middle 4–5, Advance 4–5.
 - OpenAI tidak digunakan sebagai provider atau fallback.
 - Jika model utama mengembalikan 429 atau 5xx dan `GROQ_FALLBACK_MODEL` berbeda, aplikasi mencoba model cadangan satu kali. Jika cadangan tetap gagal, error ditampilkan; aplikasi tidak mengulang fallback tanpa batas.
-- Jika Groq mengembalikan 429, aplikasi menampilkan error kuota. Aplikasi tidak mengganti hasil dengan bank kasus atau template lokal.
+- Error 401 (key ditolak), 429 dari Groq (kuota/rate limit), 5xx (gangguan provider), dan JSON tidak valid memiliki pesan UI berbeda. Untuk 429, server mencatat status, `Retry-After`, dan header `x-ratelimit-*`; countdown hanya memakai estimasi reset dari header provider, bukan angka fallback.
+- 429 dari perlindungan aplikasi diberi pesan dan kode `APP_RATE_LIMITED`, terpisah dari `AI_RATE_LIMITED` milik Groq. Batas aplikasi adalah 15 permintaan Generate valid per menit per IP pada instance server; tidak ada jeda 5 detik atau cooldown UI setelah Generate sukses.
 - Untuk semua level, kegagalan generate ditampilkan di aplikasi. Jika kasus Advance berhasil dibuat tetapi tahap kunci gagal, kasus tetap tersedia dan kuncinya dapat dicoba ulang.
-- Jika JSON, schema, atau keselarasan rumus/role/industri gagal, prompt diperbaiki berdasarkan error dan dikirim ulang ke Groq maksimal dua kali. Jika tetap gagal, error ditampilkan dan tidak ada kasus lokal yang disajikan. Tombol juga memiliki guard klik ganda dan server membatasi permintaan beruntun per IP pada instance yang sama.
+- Jika JSON, schema, atau keselarasan rumus/role/industri gagal, prompt diperbaiki berdasarkan error dan dikirim ulang ke Groq maksimal satu kali. Jika tetap gagal, error ditampilkan dan tidak ada kasus lokal yang disajikan. Tombol juga memiliki guard klik ganda.
 - Kunci PDF tetap dapat diunduh meski sebagian kunci belum tersedia; baris terkait diberi penanda **Kunci jawaban belum tersedia**.
 - Endpoint `/api/health` hanya melaporkan apakah `GROQ_API_KEY` tersedia di deployment; endpoint tersebut tidak menguji validitas key, kuota, atau akses ke model.
 
@@ -107,7 +108,7 @@ Prasyarat: Node.js dan npm.
 2. Buat file `.env.local` di root proyek dan isi:
 
    ```env
-   GROQ_API_KEY=gsk_...
+   GROQ_API_KEY=your_groq_api_key_here
    ```
 
 3. Jalankan aplikasi:
