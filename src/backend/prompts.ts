@@ -16,6 +16,7 @@ Rules: Return strict valid JSON only. Keep every string one line and escaped. Us
 Easy level restriction: Only SUM, AVERAGE, COUNT, MIN, MAX, IF. No SUMIFS, COUNTIFS, VLOOKUP, XLOOKUP.
 Dataset metadata: for number/int/currency, optional range is exactly two whole JSON numbers [min,max] with min <= max; for date, optional range is two valid chronological ISO dates ["YYYY-MM-DD","YYYY-MM-DD"]. Never mix number and string values in range. Omit range for text/enum; use values only for enum as non-empty strings. Omit unused optional fields.
 Use supplied industry products/categories as realistic dataset values. Dataset numeric ranges are two whole JSON numbers; date ranges are two valid chronological ISO dates; enum values are non-empty strings. Omit unused optional fields.
+IMPORTANT: Generate realistic column names like Tanggal_Transaksi, Qty, Status, Jam_Masuk, Harga, Nama_Pelanggan, etc. Avoid generic names like Column1, Field1.
 {"title":"string","scenario":"string","tasks":[],"dataTraps":["string"],"dataset":{"sheetName":"Data_Admin","rows":150,"columns":[{"name":"Tanggal_Transaksi","type":"date","range":["2026-01-01","2026-03-31"]},{"name":"Qty","type":"int","range":[1,100]},{"name":"Status","type":"enum","values":["Selesai","Diproses"]}]}}`;
 const COMPACT_DEFAULT_REGENERATE_TASK_PROMPT = `Regenerate only task {{taskNo}} for this Indonesian Excel case.
 Case: {{title}} | Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}} | Scenario: {{scenario}}

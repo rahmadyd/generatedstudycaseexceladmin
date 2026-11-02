@@ -137,7 +137,7 @@ function generateCellValue(
 
   // Text heuristics based on column name
   if (colNameLower.includes('no') || colNameLower.includes('id') || colNameLower.includes('kode') || colNameLower.includes('invoice')) {
-    const prefix = colNameLower.includes('inv') ? 'INV' : colNameLower.includes('po') ? 'PO' : 'TRX';
+    const prefix = colNameLower.includes('inv') ? 'INV' : colNameLower.includes('po') ? 'PO' : colNameLower.includes('so') ? 'SO' : 'TRX';
     return `${prefix}-${2026}-${String(rowIndex + 1).padStart(4, '0')}`;
   }
 
@@ -153,14 +153,60 @@ function generateCellValue(
     return faker.person.fullName();
   }
 
+  if (colNameLower.includes('alamat') || colNameLower.includes('address')) {
+    return faker.location.streetAddress();
+  }
+
+  if (colNameLower.includes('telepon') || colNameLower.includes('phone') || colNameLower.includes('hp') || colNameLower.includes('kontak')) {
+    return faker.phone.number('08##########');
+  }
+
+  if (colNameLower.includes('email')) {
+    return faker.internet.email();
+  }
+
+  if (colNameLower.includes('status') || colNameLower.includes('kondisi')) {
+    return faker.helpers.arrayElement(['Selesai', 'Diproses', 'Pending', 'Batal', 'Draft']);
+  }
+
+  if (colNameLower.includes('metode') || colNameLower.includes('pembayaran') || colNameLower.includes('payment')) {
+    return faker.helpers.arrayElement(['Transfer Bank', 'Tunai', 'Kartu Kredit', 'E-Wallet', 'Cek']);
+  }
+
+  if (colNameLower.includes('bank') || colNameLower.includes('rekening')) {
+    return faker.helpers.arrayElement(['BCA', 'Mandiri', 'BNI', 'BRI', 'Jago', 'Dana']);
+  }
+
+  if (colNameLower.includes('departemen') || colNameLower.includes('divisi') || colNameLower.includes('unit')) {
+    return faker.helpers.arrayElement(['Finance', 'HRD', 'Operations', 'Sales', 'Marketing', 'IT']);
+  }
+
+  if (colNameLower.includes('jabatan') || colNameLower.includes('posisi')) {
+    return faker.helpers.arrayElement(['Manager', 'Supervisor', 'Staff', 'Lead', 'Specialist']);
+  }
+
   if (!isIdentifier && (colNameLower.includes('barang') || colNameLower.includes('produk') || colNameLower.includes('item'))) {
     return industryProfile
       ? faker.helpers.arrayElement(industryProfile.products)
       : faker.commerce.productName();
   }
 
+  if (colNameLower.includes('kategori') || colNameLower.includes('jenis') || colNameLower.includes('tipe')) {
+    return industryProfile
+      ? faker.helpers.arrayElement(industryProfile.categories)
+      : faker.commerce.department();
+  }
+
   if (colNameLower.includes('kota') || colNameLower.includes('wilayah') || colNameLower.includes('cabang')) {
     return faker.helpers.arrayElement(['Jakarta', 'Bandung', 'Surabaya', 'Semarang', 'Medan', 'Makassar']);
+  }
+
+  if (colNameLower.includes('proyek') || colNameLower.includes('project')) {
+    return faker.helpers.arrayElement(['Renovasi Gedung', 'Pembangunan Jalan', 'Pemasangan Jaringan', 'Pengadaan ATK', 'Audit Internal']);
+  }
+
+  if (colNameLower.includes('keterangan') || colNameLower.includes('catatan') || colNameLower.includes('note')) {
+    return faker.helpers.arrayElement(['Lengkap', 'Perlu follow-up', 'Urgent', 'Normal', 'Belum dikonfirmasi']);
   }
 
   // Time columns (Jam, Waktu, etc.)
@@ -170,7 +216,13 @@ function generateCellValue(
     return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
   }
 
-  return faker.lorem.words(2);
+  // Phone number patterns
+  if (colNameLower.includes('tel') || colNameLower.includes('fax')) {
+    return `021-${faker.number.int({ min: 1000000, max: 9999999 })}`;
+  }
+
+  // Default fallback with Indonesian words instead of Latin
+  return faker.helpers.arrayElement(['Aktif', 'Proses', 'Selesai', 'Tersedia', 'Habis']);
 }
 
 /**

@@ -449,6 +449,22 @@ function createRubricTask(
         'Tambahkan kategori yang relevan pada area baris dan pastikan total ringkasan cocok dengan sumber.',
       ],
     },
+    'conditional-formatting': {
+      instruction: `Buat Conditional Formatting untuk kolom ${columnName} agar nilai yang memenuhi kriteria tertentu di-highlight.`,
+      checklist: [
+        `Terapkan Conditional Formatting pada ${columnName} dengan kriteria yang logis.`,
+        'Gunakan warna yang kontras dan mudah dibedakan.',
+        'Pastikan formatting hanya diterapkan pada baris yang memenuhi kriteria.',
+      ],
+    },
+    'named-range': {
+      instruction: `Buat Named Range untuk kolom ${columnName} agar mudah dirujuk dalam rumus.`,
+      checklist: [
+        `Definisikan Named Range untuk ${columnName} dengan nama yang deskriptif.`,
+        'Pastikan Named Range mencakup seluruh data termasuk header jika diperlukan.',
+        'Gunakan Named Range dalam rumus untuk referensi yang lebih jelas.',
+      ],
+    },
   };
   const definition = definitions[taskKind] ?? definitions.formatting;
   return {
@@ -544,7 +560,9 @@ export function buildDeterministicTasks(
   const selected = [...uniqueResults];
   const rubricKinds: TaskKind[] = caseStudy.level === 'middle'
     ? ['data-validation', 'formatting']
-    : ['formatting'];
+    : caseStudy.level === 'advance'
+      ? ['conditional-formatting', 'named-range', 'pivot-table']
+      : ['formatting'];
   for (const rubricKind of rubricKinds) {
     if (selected.length >= taskCount) break;
     if (LEVEL_RULES[caseStudy.level].taskKinds.includes(rubricKind)) {
