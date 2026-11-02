@@ -86,3 +86,50 @@ export const errorEntries: ReferenceEntry[] = [
   { title: '#####', description: 'Kolom terlalu sempit untuk menampilkan nilai, atau hasil tanggal/waktu negatif.', example: 'Lebarkan kolom atau periksa nilai tanggal.' },
   { title: "The syntax of this name isn't correct", description: 'Nama kolom Tabel tidak dikenali. Biasanya data masih berupa range biasa, nama kolom belum dijadikan Table, atau ejaan header berbeda.', example: '=SUM(TabelData[Qty Masuk]) → ubah range menjadi Table dengan Ctrl+T dan samakan ejaan header.' },
 ];
+
+export interface ShortcutEntry {
+  category: string;
+  keys: string;
+  action: string;
+  example: string;
+}
+
+export const shortcutEntries: ShortcutEntry[] = [
+  { category: 'Navigasi cepat', keys: 'Ctrl + Panah', action: 'Lompat ke tepi data paling atas, bawah, kiri, atau kanan.', example: 'Ctrl + ↓ dari A2 langsung ke baris terakhir yang terisi.' },
+  { category: 'Navigasi cepat', keys: 'Ctrl + Shift + Panah', action: 'Pilih rentang sampai tepi data tanpa menarik mouse.', example: 'Ctrl + Shift + ↓ menyorot A2:A500 untuk dimasukkan ke SUM.' },
+  { category: 'Navigasi cepat', keys: 'Ctrl + Home', action: 'Kembali ke sel A1.', example: 'Balik cepat ke awal sheet setelah bekerja di baris bawah.' },
+  { category: 'Navigasi cepat', keys: 'Ctrl + End', action: 'Lompat ke sel terakhir yang pernah dipakai.', example: 'Cek sampai baris berapa data benar-benar berisi.' },
+  { category: 'Navigasi cepat', keys: 'Ctrl + Spasi', action: 'Pilih seluruh kolom tempat kursor berada.', example: 'Ctrl + Spasi di D2 menyorot seluruh kolom D.' },
+  { category: 'Navigasi cepat', keys: 'Shift + Spasi', action: 'Pilih seluruh baris tempat kursor berada.', example: 'Shift + Spasi di baris 5 menyorot baris 5 penuh.' },
+  { category: 'Navigasi cepat', keys: 'F5 / Ctrl + G', action: 'Buka kotak Go To untuk lompat ke sel, rentang, atau nama tertentu.', example: 'Ketik A1:A100 lalu Enter untuk langsung menyorot rentang.' },
+  { category: 'Navigasi cepat', keys: 'Ctrl + F', action: 'Find untuk mencari teks atau angka.', example: 'Cari kode barang tertentu di tabel.' },
+  { category: 'Navigasi cepat', keys: 'Ctrl + H', action: 'Find & Replace untuk mengganti banyak data sekaligus.', example: 'Ganti semua "Lunnas" menjadi "Lunas".' },
+  { category: 'Mengedit sel', keys: 'F2', action: 'Masuk mode edit pada sel aktif, tanpa klik dua kali.', example: 'Perbaiki rumus langsung dari keyboard.' },
+  { category: 'Mengedit sel', keys: 'Esc', action: 'Batalkan pengeditan sel dan kembalikan isi sebelumnya.', example: 'Keluar dari mode edit tanpa mengubah data.' },
+  { category: 'Mengedit sel', keys: 'Enter / Shift + Enter', action: 'Konfirmasi entri lalu pindah turun atau naik satu sel.', example: 'Isi kolom berurutan dari atas ke bawah.' },
+  { category: 'Mengedit sel', keys: 'Tab / Shift + Tab', action: 'Konfirmasi entri lalu geser ke kanan atau ke kiri.', example: 'Isi tabel baris per baris dari kiri ke kanan.' },
+  { category: 'Mengedit sel', keys: 'Alt + Enter', action: 'Menyisipkan baris baru di dalam satu sel.', example: 'Menulis alamat dua baris dalam satu sel.' },
+  { category: 'Mengedit sel', keys: 'Ctrl + D', action: 'Fill Down, meniru sel paling atas ke sel di bawahnya.', example: 'Sorot D2:D100 lalu Ctrl + D meniru rumus D2.' },
+  { category: 'Mengedit sel', keys: 'Ctrl + R', action: 'Fill Right, meniru sel paling kiri ke sel di kanannya.', example: 'Sorot B2:F2 lalu Ctrl + R meniru rumus B2.' },
+  { category: 'Mengedit sel', keys: 'Ctrl + Enter', action: 'Mengisi seluruh sel terpilih dengan entri yang sama sekaligus.', example: 'Sorot C2:C50 lalu Ctrl + Enter mengisi nilai sama.' },
+  { category: 'Mengedit sel', keys: 'Ctrl + Z / Ctrl + Y', action: 'Undo untuk membatalkan, Redo untuk mengulang perubahan.', example: 'Kembalikan rumus yang baru saja salah diubah.' },
+  { category: 'Rumus & referensi', keys: 'F4', action: 'Saat mengetik alamat sel di rumus, mengganti jenis referensi absolut/relatif secara bergilir.', example: 'Ketik B2 lalu tekan F4 berulang: $B$2 → B$2 → $B2 → B2.' },
+  { category: 'Rumus & referensi', keys: 'Alt + =', action: 'AutoSum, menyisipkan =SUM() otomatis untuk rentang di atas kolom aktif.', example: 'Kursor di bawah kolom angka lalu tekan Alt + =.' },
+  { category: 'Rumus & referensi', keys: 'Shift + F3', action: 'Membuka dialog Insert Function beserta panduan argumen.', example: 'Cari SUMIFS dan lihat urutan argumennya.' },
+  { category: 'Rumus & referensi', keys: 'Ctrl + A', action: 'Setelah mengetik nama fungsi dan tanda kurung buka, membuka kotak argumen fungsi.', example: 'Ketik =VLOOKUP( lalu Ctrl + A.' },
+  { category: 'Rumus & referensi', keys: 'F9', action: 'Menghitung ulang seluruh workbook; bila sebagian rumus disorot, menampilkan hasil sementaranya.', example: 'Sorot SUM(E2:E100) lalu F9 untuk melihat nilainya.' },
+  { category: 'Rumus & referensi', keys: 'Ctrl + `', action: 'Menampilkan atau menyembunyikan rumus pada seluruh sheet.', example: 'Audit semua rumus sekaligus lalu kembalikan tampilan.' },
+  { category: 'Rumus & referensi', keys: 'F3', action: 'Menempel nama rentang atau Tabel yang sudah diberi nama ke dalam rumus.', example: 'Menyisipkan TabelData ke dalam rumus.' },
+  { category: 'Rumus & referensi', keys: 'Ctrl + Shift + Enter', action: 'Membuat rumus array gaya lama (CSE).', example: 'Hanya dipakai pada Excel sebelum dynamic array.' },
+  { category: 'Data & tabel', keys: 'Ctrl + T', action: 'Mengubah rentang menjadi Table sehingga header bisa dipakai sebagai TabelData[Kolom].', example: 'Rumus menjadi =SUM(TabelData[Subtotal]).' },
+  { category: 'Data & tabel', keys: 'Ctrl + Shift + L', action: 'Menyalakan atau mematikan Filter pada rentang/Table aktif.', example: 'Pasang tombol filter pada baris header.' },
+  { category: 'Data & tabel', keys: 'Alt + ↓', action: 'Membuka daftar AutoFilter pada kolom aktif.', example: 'Pilih kriteria tanpa mengklik panah filter.' },
+  { category: 'Data & tabel', keys: 'Ctrl + Shift + +', action: 'Menyisipkan baris atau kolom baru pada area yang disorot.', example: 'Sorot baris 5 lalu tekan tombol ini untuk menambah baris.' },
+  { category: 'Data & tabel', keys: 'Ctrl + -', action: 'Menghapus baris atau kolom yang disorot.', example: 'Hapus baris kosong yang menyisip di tengah data.' },
+  { category: 'Format & tampilan', keys: 'Ctrl + 1', action: 'Membuka dialog Format Cells untuk mengatur angka, tanggal, garis, dan lainnya.', example: 'Atur kolom harga sebagai format angka ribuan.' },
+  { category: 'Format & tampilan', keys: 'Ctrl + B / Ctrl + I / Ctrl + U', action: 'Memberi cetak tebal, miring, atau garis bawah pada sel terpilih.', example: 'Tebalkan baris header agar mudah dibaca.' },
+  { category: 'Format & tampilan', keys: 'Ctrl + Shift + $', action: 'Menerapkan format mata uang dengan dua desimal.', example: 'Rp1,250,000.00 pada kolom Total.' },
+  { category: 'Format & tampilan', keys: 'Ctrl + Shift + %', action: 'Menerapkan format persen tanpa desimal.', example: '0,15 tampil sebagai 15%.' },
+  { category: 'Format & tampilan', keys: 'Ctrl + Shift + #', action: 'Menerapkan format tanggal hari/bulan/tahun.', example: 'Menampilkan 01/04/2026.' },
+  { category: 'Format & tampilan', keys: 'Ctrl + Shift + !', action: 'Menerapkan format angka dengan pemisah ribuan dan dua desimal.', example: '12345.6 tampil sebagai 12,345.60.' },
+];

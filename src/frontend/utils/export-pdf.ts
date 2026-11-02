@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { CaseStudy } from '@/shared/schema';
 import { DataRow } from './dataset-generator';
 import { normalizeExcelFormulaLocale } from '@/shared/excel-formula-locale';
-import { errorEntries, formulaGuideEntries, symbolEntries } from './formula-guide-data';
+import { errorEntries, formulaGuideEntries, shortcutEntries, symbolEntries } from './formula-guide-data';
 import { ROLE_PROFILES } from '@/shared/constants';
 
 export function exportSoalPDF(caseStudy: CaseStudy, previewRows: DataRow[]) {
@@ -290,7 +290,7 @@ export function exportFormulaGuidePDF(separator: ';' | ',') {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
   doc.setTextColor(20, 83, 45);
-  doc.text('KAMUS SIMBOL, RUMUS, DAN ERROR EXCEL', 12, 12);
+  doc.text('KAMUS SIMBOL, TOMBOL, RUMUS, DAN ERROR EXCEL', 12, 12);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(90, 90, 90);
@@ -303,6 +303,27 @@ export function exportFormulaGuidePDF(separator: ';' | ',') {
     theme: 'grid',
     headStyles: { fillColor: [22, 101, 52], textColor: 255, fontStyle: 'bold' },
     columnStyles: { 0: { cellWidth: 42, fontStyle: 'bold' }, 1: { cellWidth: 120 }, 2: { cellWidth: 105, font: 'courier' } },
+    styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
+    margin: { left: 12, right: 12 },
+  });
+
+  doc.addPage();
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(20, 83, 45);
+  doc.text('TOMBOL PINTAS (SHORTCUT) EXCEL', 12, 12);
+  autoTable(doc, {
+    startY: 18,
+    head: [['Kategori', 'Tombol', 'Fungsi', 'Contoh pemakaian']],
+    body: shortcutEntries.map((entry) => [entry.category, entry.keys, entry.action, entry.example]),
+    theme: 'grid',
+    headStyles: { fillColor: [22, 101, 52], textColor: 255, fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 32, fontStyle: 'bold' },
+      1: { cellWidth: 46, fontStyle: 'bold' },
+      2: { cellWidth: 110 },
+      3: { cellWidth: 79 },
+    },
     styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
     margin: { left: 12, right: 12 },
   });
@@ -359,5 +380,5 @@ export function exportFormulaGuidePDF(separator: ';' | ',') {
     doc.setTextColor(120, 120, 120);
     doc.text(`Kamus Rumus Excel | Halaman ${page} dari ${pageCount}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 7, { align: 'center' });
   }
-  doc.save('Kamus_Simbol_Rumus_dan_Error_Excel.pdf');
+  doc.save('Kamus_Simbol_Tombol_Rumus_dan_Error_Excel.pdf');
 }

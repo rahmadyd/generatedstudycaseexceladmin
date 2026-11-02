@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Check, Copy, Download, Search, X } from 'lucide-react';
-import { errorEntries, formulaGuideEntries, symbolEntries } from '../utils/formula-guide-data';
+import { errorEntries, formulaGuideEntries, shortcutEntries, symbolEntries } from '../utils/formula-guide-data';
 import { exportFormulaGuidePDF } from '../utils/export-pdf';
 
 interface FormulaGuideModalProps {
@@ -10,10 +10,11 @@ interface FormulaGuideModalProps {
   onClose: () => void;
 }
 
-type GuideTab = 'symbols' | 'formulas' | 'errors';
+type GuideTab = 'symbols' | 'shortcuts' | 'formulas' | 'errors';
 
 const tabs: { id: GuideTab; label: string }[] = [
   { id: 'symbols', label: 'Simbol' },
+  { id: 'shortcuts', label: 'Tombol' },
   { id: 'formulas', label: 'Rumus' },
   { id: 'errors', label: 'Error' },
 ];
@@ -46,6 +47,10 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({ isOpen, on
   );
   const matchingSymbols = useMemo(
     () => symbolEntries.filter((entry) => `${entry.title} ${entry.description} ${entry.example}`.toLocaleLowerCase('id').includes(query)),
+    [query],
+  );
+  const matchingShortcuts = useMemo(
+    () => shortcutEntries.filter((entry) => `${entry.category} ${entry.keys} ${entry.action} ${entry.example}`.toLocaleLowerCase('id').includes(query)),
     [query],
   );
   const matchingErrors = useMemo(
@@ -129,6 +134,39 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({ isOpen, on
     </div>
   );
 
+  const renderShortcutResults = () => {
+    if (matchingShortcuts.length === 0) return <EmptySearch />;
+    const groups = matchingShortcuts.reduce<Record<string, typeof matchingShortcuts>>((result, entry) => {
+      (result[entry.category] ??= []).push(entry);
+      return result;
+    }, {});
+    return (
+      <div className="space-y-5">
+        {Object.entries(groups).map(([category, entries]) => (
+          <section key={category}>
+            <h3 className="mb-2 text-sm font-bold text-emerald-800 dark:text-emerald-300">{category}</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {entries.map((entry) => (
+                <article key={entry.keys} className="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+                  <div className="flex flex-wrap items-center gap-1">
+                    {entry.keys.split(' + ').map((key, index) => (
+                      <React.Fragment key={key}>
+                        {index > 0 && <span className="text-xs font-bold text-gray-400">+</span>}
+                        <kbd className="rounded-md border border-gray-300 bg-white px-2 py-1 font-sans text-[11px] font-semibold text-gray-800 shadow-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">{key}</kbd>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  <p className="mt-2.5 text-xs leading-relaxed text-gray-600 dark:text-gray-300">{entry.action}</p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-emerald-800 dark:text-emerald-300"><strong>Contoh:</strong> {entry.example}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fadeIn"
@@ -141,7 +179,7 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({ isOpen, on
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-emerald-100 p-2 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"><BookOpen className="h-5 w-5" /></div>
             <div>
-              <h2 id="formula-guide-title" className="text-lg font-bold text-gray-900 dark:text-white">Kamus Simbol, Rumus, dan Error Excel</h2>
+              <h2 id="formula-guide-title" className="text-lg font-bold text-gray-900 dark:text-white">Kamus Simbol, Tombol, Rumus, dan Error Excel</h2>
               <p className="text-xs text-gray-500 dark:text-gray-400">Referensi praktis untuk belajar Excel, tanpa API.</p>
             </div>
           </div>
@@ -170,6 +208,7 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({ isOpen, on
           {hasSearch ? (
             <div className="space-y-6">
               <section><h3 className="mb-3 text-sm font-bold text-gray-900 dark:text-white">Simbol ({matchingSymbols.length})</h3>{renderReferenceResults(matchingSymbols)}</section>
+              <section><h3 className="mb-3 text-sm font-bold text-gray-900 dark:text-white">Tombol ({matchingShortcuts.length})</h3>{renderShortcutResults()}</section>
               <section><h3 className="mb-3 text-sm font-bold text-gray-900 dark:text-white">Rumus ({matchingFormulas.length})</h3>{renderFormulaResults()}</section>
               <section><h3 className="mb-3 text-sm font-bold text-gray-900 dark:text-white">Error ({matchingErrors.length})</h3>{renderReferenceResults(matchingErrors)}</section>
             </div>
@@ -179,6 +218,7 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({ isOpen, on
                 {tabs.map((tab) => <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id)} className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${activeTab === tab.id ? 'border-emerald-600 text-emerald-700 dark:text-emerald-300' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}>{tab.label}</button>)}
               </div>
               {activeTab === 'symbols' && renderReferenceResults(matchingSymbols)}
+              {activeTab === 'shortcuts' && <><div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-100">Tombol pintas mempercepat pengerjaan. Tekan <strong>Alt</strong> pada Excel versi Windows untuk melihat daftar tombol menu, dan <strong>F4</strong> saat mengetik rumus untuk mengunci referensi.</div>{renderShortcutResults()}</>}
               {activeTab === 'formulas' && <><div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100">Pemisah argumen mengikuti pilihan di atas: <strong>{separator}</strong>. Fungsi seperti XLOOKUP, FILTER, UNIQUE, SORT, IFS, TEXTJOIN, dan LET hanya tersedia pada versi Excel tertentu; periksa label versi di setiap kartu.</div>{renderFormulaResults()}</>}
               {activeTab === 'errors' && renderReferenceResults(matchingErrors)}
             </>
