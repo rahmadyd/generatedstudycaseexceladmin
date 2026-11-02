@@ -5,7 +5,7 @@ Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}}
 Context: {{companyName}}; {{theme}}; {{period}}. Industry guidance: {{industryProfile}}
 Recently used themes: {{recentThemes}}. Do not repeat these themes; make the selected new angle visible in the scenario and tasks.
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
-Task count: exactly {{taskCount}} | Seed: {{seed}}
+Planned task count: {{taskCount}} | Seed: {{seed}} (tasks are generated in a separate request)
 Formula policy: {{levelFormulaPolicy}}
 Keep each hint within {{hintMaxChars}} characters.
 
@@ -19,12 +19,12 @@ RULES
 - Dataset column metadata must use ONLY these closed types: `time` (HH:mm), `integer`, `decimal`, `currency`, `date`, `name`, `category`, `id`, `text`, `derived`. For `integer`, `decimal`, and `currency`, provide `min` and `max` as whole JSON numbers with `min <= max`. For `date`, provide `from` and `to` as real ISO dates `"YYYY-MM-DD"` in chronological order. For `category`, provide `values` as a non-empty array of strings. For `id`, provide a `pattern` such as `"REF-2026-####"`. For `time`, provide no range. Never mix strings and numbers in `min`/`max`. Omit optional fields that do not apply.
 - Name data columns realistically (for example `Tanggal_Transaksi`, `Jam_Masuk`, `Jam_Pulang`, `Cuti`, `Qty`, `Harga`, `Status`, `Stok_Awal`, `Stok_Masuk`, `Stok_Keluar`). Time columns such as `Jam_Masuk` and `Jam_Pulang` MUST use type `time`. Never use generic names like `Column1` and never fill any cell with Lorem/Latin words.
 - Tasks, hints, and target results must describe the same work. Every criterion must match the final dataset schema. Formula tasks must provide the exact headers they use and a formula that can be executed against the generated dataset.
-- For Easy and Middle, return an empty `tasks` array: the application creates deterministic tasks and computes their answers from the seeded dataset.
-- For Advance, return exactly {{taskCount}} tasks. Each task must include `no`, `instruction`, `hint`, `targetResult`, `taskKind`, `answerMode`, `columnsUsed`, and either `formula` (computed) or `rubricChecklist` (rubric). `taskKind` must be allowed for the selected level. `columnsUsed` must contain exact dataset headers. Computed formulas must use only allowed functions, use A1 cell references on the single dataset sheet, and must be executable. Periodic tasks must include exact ISO start/end dates and `dateColumn`. Rubric tasks must include a concise checklist and expected output in `targetResult`.
+- Always return an empty `tasks` array for every level: the application creates the tasks in a separate request (deterministic for Easy/Middle, AI-designed in batches for Advance) and computes their answers from the seeded dataset.
+- Do not generate answer keys; the application evaluates every computed formula against the same seeded dataset or builds a rubric checklist.
 - Follow the formula policy and Excel version when describing tasks. Use the requested reference style.
 - Date and conditional requirements must be possible with the provided date, category, and numeric columns. Do not claim that filtering worksheet rows applies a formula criterion.
 - Use concrete industry-specific dataset headers and values, not generic labels alone. Choose fields and enum values appropriate to the industry's actual operations and selected admin responsibility; avoid reusing unrelated retail/sales structures across industries.
-- Return exactly {{taskCount}} tasks for Advance, and no tasks for Easy/Middle. Do not generate answer keys; the application evaluates every computed formula against the same seeded dataset or builds a rubric checklist.
+- Return an empty `tasks` array for every level; never write tasks in this response.
 - Keep each string concise and one line. Never claim fixed calculated values for randomly generated rows.
 - Keep JSON compact; no markdown or unused fields.
 
@@ -51,6 +51,4 @@ OUTPUT SHAPE
   }
 }
 
-For Advance, replace `tasks` with an array in this shape:
-{"no":1,"instruction":"string","hint":"string","targetResult":"string","taskKind":"calculation","answerMode":"computed","columnsUsed":["Qty"],"formula":"SUM(B2:B151)"}
-For a rubric task, set `answerMode` to `rubric` and provide `rubricChecklist` instead of `formula`.
+The `tasks` array must always be empty in this response. The application creates the tasks afterwards.

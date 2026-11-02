@@ -390,6 +390,33 @@ function createTotal(
   };
 }
 
+function createCount(
+  caseStudy: TaskContext,
+  rows: DataRow[],
+  column: DatasetColumn | undefined,
+): TemplateResult | undefined {
+  if (!column || rows.length === 0) return undefined;
+  const count = rows.filter((row) => typeof row[column.name] === 'number').length;
+  return {
+    task: {
+      instruction: `Hitung banyak data angka pada kolom ${column.name}.`,
+      hint: 'Gunakan COUNT pada seluruh rentang data agar hanya sel angka yang dihitung.',
+      targetResult: `Satu angka jumlah data angka pada ${column.name}.`,
+      columnsUsed: [column.name],
+      answerMode: 'computed',
+      taskKind: 'calculation',
+    },
+    answer: {
+      formula: `=COUNT(${rangeFor(caseStudy, column.name)})`,
+      expectedValue: count,
+      columnsUsed: [column.name],
+      mode: 'computed',
+      explanation: `COUNT menghitung sel berisi angka pada ${column.name}.`,
+      rubricChecklist: [],
+    },
+  };
+}
+
 function createBasicAggregate(
   caseStudy: TaskContext,
   rows: DataRow[],
@@ -525,6 +552,7 @@ export function buildDeterministicTasks(
       addTemplate(results, createBasicAggregate(caseStudy, rows, valueColumn, 'AVERAGE'));
       addTemplate(results, createBasicAggregate(caseStudy, rows, valueColumn, 'MIN'));
       addTemplate(results, createBasicAggregate(caseStudy, rows, valueColumn, 'MAX'));
+      addTemplate(results, createCount(caseStudy, rows, valueColumn));
     }
     for (let rowIndex = 0; rowIndex < Math.min(rows.length, taskCount); rowIndex += 1) {
       addTemplate(results, createNestedIf(caseStudy, rows, preferredValueColumn, rowIndex));
@@ -532,9 +560,13 @@ export function buildDeterministicTasks(
     // Easy tidak boleh menggunakan conditional aggregation (SUMIFS, COUNTIFS) atau lookup (VLOOKUP, XLOOKUP)
   } else {
     // Middle/Advance level: boleh VLOOKUP, XLOOKUP, SUMIF, SUMIFS, COUNTIF, COUNTIFS, dll
-    const firstCategory = categoryValues[0];
-    addTemplate(results, createCategorySum(caseStudy, rows, categoryColumn, preferredValueColumn, firstCategory));
-    addTemplate(results, createCategoryCount(caseStudy, rows, categoryColumn, firstCategory));
+    // Kombinasi seluruh kategori x kolom numerik agar variasi cukup untuk target jumlah tugas.
+    for (const category of categoryValues) {
+      for (const valueColumn of numericColumns) {
+        addTemplate(results, createCategorySum(caseStudy, rows, categoryColumn, valueColumn, category));
+      }
+      addTemplate(results, createCategoryCount(caseStudy, rows, categoryColumn, category));
+    }
     addTemplate(results, createLookup(caseStudy, rows, keyColumn, lookupResultColumn));
     addTemplate(results, createPeriodAggregate(caseStudy, rows, dateColumn, preferredValueColumn));
     if (caseStudy.role.toLocaleLowerCase('id').includes('gudang') ||
@@ -543,19 +575,13 @@ export function buildDeterministicTasks(
         caseStudy, rows, openingColumn, incomingColumn, outgoingColumn,
       ));
     }
-    for (const category of categoryValues.slice(1)) {
-      addTemplate(results, createCategorySum(caseStudy, rows, categoryColumn, preferredValueColumn, category));
-      addTemplate(results, createCategoryCount(caseStudy, rows, categoryColumn, category));
-    }
-    for (const valueColumn of numericColumns) {
-      if (valueColumn !== preferredValueColumn) {
-        addTemplate(results, createCategorySum(
-          caseStudy, rows, categoryColumn, valueColumn, firstCategory,
-        ));
-      }
-    }
     for (let rowIndex = 1; rowIndex < Math.min(rows.length, taskCount); rowIndex += 1) {
       addTemplate(results, createLookup(caseStudy, rows, keyColumn, lookupResultColumn, rowIndex));
+    }
+    // Sisa slot diisi agregasi dasar pada kolom numerik lain agar target tugas selalu terpenuhi.
+    for (const valueColumn of numericColumns) {
+      addTemplate(results, createTotal(caseStudy, rows, valueColumn));
+      addTemplate(results, createBasicAggregate(caseStudy, rows, valueColumn, 'AVERAGE'));
     }
   }
 

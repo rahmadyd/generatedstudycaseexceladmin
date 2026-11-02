@@ -13,8 +13,7 @@ import {
 const AUTO_ADMIN_ROLE = 'recommended';
 
 function normalizeTaskCount(level: Level | null, taskCount: number): number {
-  if (!level) return 4;
-  const config = GENERATION_CONFIG[level];
+  const config = GENERATION_CONFIG[level ?? 'easy'];
   return config.taskCountOptions.includes(taskCount) ? taskCount : config.defaultTasks;
 }
 
@@ -40,7 +39,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
   initialFormulaStyle = 'classic',
   initialStructuredReferenceAt = true,
   initialIndustry = 'Acak',
-  initialTaskCount = 5,
+  initialTaskCount = 20,
   initialTaskCountMode = 'auto',
 }) => {
   const [level, setLevel] = useState<Level | null>(initialLevel ?? 'easy');
@@ -83,7 +82,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
 
   const recommendedTaskCount = level
     ? getRecommendedTaskCount(level, industry)
-    : 5;
+    : GENERATION_CONFIG.easy.defaultTasks;
   const recommendedRole = getRecommendedAdminRole(industry);
   const effectiveRole = useRecommendedRole ? recommendedRole : role;
   const recommendedRoleOption = ADMIN_ROLES.find((item) => item.id === recommendedRole);
@@ -371,7 +370,8 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
                   ))}
                 </select>
                 <p className="mt-1.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
-                  Jumlah tugas dibatasi sesuai level agar kunci jawaban tetap fokus dan proses generate lebih ringan.
+                  Jumlah tugas mengikuti standar tes admin (minimal 20 soal). Easy &amp; Middle dibuat lokal tanpa
+                  token tambahan; Advance dibuat AI per batch agar tidak terpotong.
                 </p>
               </div>
 

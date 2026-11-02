@@ -6,6 +6,14 @@ export interface GenerationLevelConfig {
   regenerateMaxTokens: number;
   stagedCaseMaxTokens?: number;
   stagedAnswerKeyMaxTokens?: number;
+  /**
+   * Jumlah tugas per permintaan AI. Level Advanced menulis tugasnya lewat AI,
+   * jadi tugas dipecah menjadi beberapa batch agar output tidak terpotong
+   * (finish_reason "length"). Easy & Middle tidak memakai ini karena tugasnya
+   * dibangun deterministik di server.
+   */
+  taskBatchSize?: number;
+  taskBatchMaxTokens?: number;
   minTasks: number;
   maxTasks: number;
   defaultTasks: number;
@@ -14,16 +22,19 @@ export interface GenerationLevelConfig {
   hintMaxChars: number;
 }
 
+/** Bare minimum soal tes admin. Dipakai semua level. */
+export const TARGET_TASK_COUNT = 20;
+
 export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
   easy: {
     maxTokens: 2000,
     repairMaxTokens: 2400,
     regenerateMaxTokens: 800,
     stagedAnswerKeyMaxTokens: 1200,
-    minTasks: 3,
-    maxTasks: 4,
-    defaultTasks: 4,
-    taskCountOptions: [3, 4],
+    minTasks: TARGET_TASK_COUNT,
+    maxTasks: 25,
+    defaultTasks: TARGET_TASK_COUNT,
+    taskCountOptions: [TARGET_TASK_COUNT],
     explanationMaxChars: 220,
     hintMaxChars: 140,
   },
@@ -32,10 +43,10 @@ export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
     repairMaxTokens: 2800,
     regenerateMaxTokens: 1000,
     stagedAnswerKeyMaxTokens: 1600,
-    minTasks: 4,
-    maxTasks: 5,
-    defaultTasks: 5,
-    taskCountOptions: [4, 5],
+    minTasks: TARGET_TASK_COUNT,
+    maxTasks: 25,
+    defaultTasks: TARGET_TASK_COUNT,
+    taskCountOptions: [TARGET_TASK_COUNT],
     explanationMaxChars: 260,
     hintMaxChars: 160,
   },
@@ -45,10 +56,12 @@ export const GENERATION_CONFIG: Record<Level, GenerationLevelConfig> = {
     regenerateMaxTokens: 1200,
     stagedCaseMaxTokens: 2200,
     stagedAnswerKeyMaxTokens: 1800,
-    minTasks: 4,
-    maxTasks: 5,
-    defaultTasks: 5,
-    taskCountOptions: [4, 5],
+    taskBatchSize: 5,
+    taskBatchMaxTokens: 2000,
+    minTasks: TARGET_TASK_COUNT,
+    maxTasks: 25,
+    defaultTasks: TARGET_TASK_COUNT,
+    taskCountOptions: [TARGET_TASK_COUNT],
     explanationMaxChars: 300,
     hintMaxChars: 180,
   },

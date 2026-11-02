@@ -14,6 +14,8 @@ import {
 } from '@/shared/dataset-validation';
 import { getIndustryColumnValues } from '@/shared/constants';
 import { INDUSTRY_OPTIONS, type Industry, type Level } from '@/shared/schema';
+import { buildDeterministicTasks, ensureTemplateDataset } from '@/backend/task-templates';
+import { TARGET_TASK_COUNT } from '@/shared/generation-config';
 
 const LEVELS: Level[] = ['easy', 'middle', 'advance'];
 const INDUSTRIES: Industry[] = [...INDUSTRY_OPTIONS];
@@ -252,5 +254,61 @@ describe('determinisme seed', () => {
     const second = buildValidatedDataset(base);
     expect(second.seed).toBe(first.seed);
     expect(JSON.stringify(second.rows)).toBe(JSON.stringify(first.rows));
+  });
+});
+
+describe('tugas deterministik memenuhi standar tes admin', () => {
+  it(`menghasilkan tepat ${TARGET_TASK_COUNT} tugas unik untuk Easy dan Middle`, () => {
+    const failures: string[] = [];
+    const roles = ['Penjualan', 'Staf Gudang'];
+
+    for (const [variantIndex, variant] of VARIANTS.entries()) {
+      const industry = INDUSTRIES[variantIndex % INDUSTRIES.length];
+      for (const level of ['easy', 'middle'] as Level[]) {
+        for (const role of roles) {
+          const label = `${variant.name}/${level}/${role}`;
+          try {
+            const datasetInput = ensureTemplateDataset(
+              { sheetName: 'Data_Admin', rows: 50, columns: variant.columns },
+              level,
+              role,
+              industry,
+            );
+            const built = buildValidatedDataset({
+              seed: `task-${variant.name}-${level}-${role}`,
+              level,
+              industry,
+              dataset: datasetInput,
+              categoryValues: (columnName) => getIndustryColumnValues(columnName, industry),
+            });
+            const generated = buildDeterministicTasks({
+              dataset: built.dataset,
+              level,
+              role,
+              excelVersion: 'Microsoft 365',
+            }, built.rows, TARGET_TASK_COUNT);
+
+            if (generated.tasks.length !== TARGET_TASK_COUNT) {
+              failures.push(`${label}: hanya ${generated.tasks.length} tugas`);
+            }
+            const instructions = generated.tasks.map((task) => task.instruction);
+            if (new Set(instructions).size !== instructions.length) {
+              failures.push(`${label}: ada instruksi tugas yang duplikat`);
+            }
+            if (generated.answerKey.length !== generated.tasks.length) {
+              failures.push(`${label}: kunci ${generated.answerKey.length} vs tugas ${generated.tasks.length}`);
+            }
+            const taskNumbers = generated.tasks.map((task) => task.no);
+            if (new Set(taskNumbers).size !== taskNumbers.length) {
+              failures.push(`${label}: nomor tugas duplikat`);
+            }
+          } catch (error) {
+            failures.push(`${label}: ${(error as Error).message}`);
+          }
+        }
+      }
+    }
+
+    expect(failures).toEqual([]);
   });
 });

@@ -2,14 +2,17 @@
 import { randomUUID } from 'crypto';
 import {
   CaseStudy,
+  DatasetColumn,
   DatasetSchema,
   GenerateRequest,
+  Level,
   RegenerateTaskRequest,
   Task,
   TaskSchema,
 } from '../shared/schema';
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
 import {
+  compileAdvanceTasksPrompt,
   compileGeneratePrompt,
   compileRegenerateTaskPrompt,
   resolveIndustry,
@@ -223,6 +226,115 @@ async function completeStagedContent(initialCase: CaseStudy): Promise<CaseStudy>
   return caseStudy;
 }
 
+function formatDatasetColumnForPrompt(column: DatasetColumn): string {
+  const details = [
+    column.values ? `values: ${column.values.join(' | ')}` : '',
+    column.min !== undefined && column.max !== undefined ? `min ${column.min}, max ${column.max}` : '',
+    column.from && column.to ? `${column.from} s/d ${column.to}` : '',
+    column.expression ? `expression: ${column.expression}` : '',
+  ].filter(Boolean);
+  return `${column.name} (${column.type}${details.length ? `; ${details.join('; ')}` : ''})`;
+}
+
+/**
+ * Tugas level Advance ditulis AI. Supaya tidak terpotong (finish_reason "length")
+ * saat jumlah tugas besar, tugas dipecah menjadi beberapa batch permintaan kecil
+ * lalu digabung dan dinomori ulang secara berurutan.
+ */
+async function generateAdvanceTasks(params: {
+  requestId: string;
+  title: string;
+  scenario: string;
+  level: Level;
+  role: string;
+  industry: string;
+  excelVersion: string;
+  formulaStyle: string;
+  structuredReferenceAt: boolean;
+  columns: DatasetColumn[];
+  rows: number;
+  taskCount: number;
+}): Promise<Task[]> {
+  const config = GENERATION_CONFIG[params.level];
+  const batchSize = Math.max(1, config.taskBatchSize ?? params.taskCount);
+  const maxBatches = Math.ceil(params.taskCount / batchSize) + 3;
+  const columnDescriptions = params.columns.map(formatDatasetColumnForPrompt);
+  const tasks: Task[] = [];
+  const seenInstructions = new Set<string>();
+  let batchNumber = 0;
+
+  while (tasks.length < params.taskCount && batchNumber < maxBatches) {
+    batchNumber += 1;
+    const startNo = tasks.length + 1;
+    const size = Math.min(batchSize, params.taskCount - tasks.length);
+    const prompt = compileAdvanceTasksPrompt({
+      title: params.title,
+      scenario: params.scenario,
+      level: params.level,
+      role: params.role,
+      industry: params.industry,
+      excelVersion: params.excelVersion,
+      formulaStyle: params.formulaStyle,
+      structuredReferenceAt: params.structuredReferenceAt,
+      columns: columnDescriptions,
+      rows: params.rows,
+      batchSize: size,
+      startNo,
+      endNo: startNo + size - 1,
+      previousInstructions: tasks.map((task) => task.instruction),
+      hintMaxChars: config.hintMaxChars,
+      explanationMaxChars: config.explanationMaxChars,
+    });
+
+    const rawResponse = await callGroqChat({
+      systemPrompt: 'Create Excel task metadata for an Advance case study. Return strict compact JSON only.',
+      userPrompt: prompt,
+      temperature: 0.7,
+      maxTokens: config.taskBatchMaxTokens ?? config.maxTokens,
+      requestId: params.requestId,
+      callNumber: batchNumber + 1,
+      level: params.level,
+      allowModelFallback: false,
+      fallbackOnRateLimit: false,
+      jsonMode: true,
+    });
+
+    const parsedBatch = parseAIJson(rawResponse, 'Gagal parse JSON tugas Advance');
+    const batchTasks = parsedBatch.tasks;
+    if (!Array.isArray(batchTasks) || batchTasks.length === 0) {
+      throw new Error(`Batch ${batchNumber} tugas Advance tidak berisi tugas apa pun.`);
+    }
+    if (batchTasks.length > size) {
+      throw new Error(`Batch ${batchNumber} tugas Advance melebihi ${size} tugas.`);
+    }
+    const taskInput = batchTasks as Record<string, unknown>[];
+    const missingMetadata = taskInput.flatMap((task, index) => {
+      const missing = ['taskKind', 'answerMode', 'columnsUsed']
+        .filter((field) => !(field in task))
+        .map((field) => `tugas ${startNo + index}: ${field} wajib diisi`);
+      return missing;
+    });
+    if (missingMetadata.length > 0) throw new Error(missingMetadata.join('; '));
+    const taskResult = TaskSchema.array().safeParse(taskInput);
+    if (!taskResult.success) {
+      throw new Error(`Schema tugas Advance tidak valid: ${formatZodIssues(taskResult.error.issues)}`);
+    }
+
+    for (const task of taskResult.data) {
+      const instructionKey = task.instruction.trim().toLocaleLowerCase('id');
+      if (!instructionKey || seenInstructions.has(instructionKey)) continue;
+      seenInstructions.add(instructionKey);
+      tasks.push({ ...task, no: tasks.length + 1 });
+      if (tasks.length >= params.taskCount) break;
+    }
+  }
+
+  if (tasks.length < params.taskCount) {
+    throw new Error(`Hanya ${tasks.length} dari ${params.taskCount} tugas Advance yang berhasil dibuat.`);
+  }
+  return tasks;
+}
+
 /** Generate a new case study */
 export async function generateCaseStudyService(
   req: GenerateRequest,
@@ -248,7 +360,7 @@ export async function generateCaseStudyService(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const rawResponse = await callGroqChat({
-        systemPrompt: 'Create the case scenario and dataset. For Advance only, also create task metadata. Return strict compact JSON only.',
+        systemPrompt: 'Create the case scenario and dataset only. Always return tasks: []. Return strict compact JSON only.',
         userPrompt: `${prompt}${retryGuidance}`,
         temperature: 0.7,
         maxTokens: GENERATION_CONFIG[req.level].maxTokens,
@@ -261,6 +373,9 @@ export async function generateCaseStudyService(
       });
 
       const parsed = parseAIJson(rawResponse, 'Gagal parse JSON dari AI');
+      if (typeof parsed.title !== 'string' || typeof parsed.scenario !== 'string') {
+        throw new Error('Respons AI harus memiliki title dan scenario berupa string.');
+      }
       const datasetResult = RawDatasetSchema.safeParse(parsed.dataset);
       if (!datasetResult.success) {
         throw new Error(`Schema dataset tidak valid: ${formatZodIssues(datasetResult.error.issues)}`);
@@ -321,22 +436,20 @@ export async function generateCaseStudyService(
         tasks = generated.tasks;
         answerKey = generated.answerKey;
       } else {
-        if (!Array.isArray(parsed.tasks) || parsed.tasks.length !== taskCount) {
-          throw new Error(`Advance harus memiliki tepat ${taskCount} tugas.`);
-        }
-        const taskInput = parsed.tasks as Record<string, unknown>[];
-        const missingMetadata = taskInput.flatMap((task, index) => {
-          const missing = ['taskKind', 'answerMode', 'columnsUsed']
-            .filter((field) => !(field in task))
-            .map((field) => `tugas ${index + 1}: ${field} wajib diisi`);
-          return missing;
+        tasks = await generateAdvanceTasks({
+          requestId,
+          title: parsed.title,
+          scenario: parsed.scenario,
+          level: req.level,
+          role: req.role,
+          industry,
+          excelVersion: req.excelVersion,
+          formulaStyle: metadata.formulaStyle,
+          structuredReferenceAt: metadata.structuredReferenceAt,
+          columns: canonicalDataset.columns,
+          rows: canonicalDataset.rows,
+          taskCount,
         });
-        if (missingMetadata.length > 0) throw new Error(missingMetadata.join('; '));
-        const taskResult = TaskSchema.array().safeParse(taskInput);
-        if (!taskResult.success) {
-          throw new Error(`Schema tugas tidak valid: ${formatZodIssues(taskResult.error.issues)}`);
-        }
-        tasks = taskResult.data.map((task, index) => ({ ...task, no: index + 1 }));
         const availableTaskKinds = new Set(LEVEL_RULES.advance.taskKinds);
         const availableColumns = new Set(canonicalDataset.columns.map((column) => column.name));
         answerKey = tasks.map((task) => {
@@ -443,7 +556,7 @@ export async function generateCaseStudyService(
       if (attempt === 1) {
         throw new Error(`Gagal generate studi kasus: ${msg || 'Validasi hasil AI gagal.'}`);
       }
-      retryGuidance = `\n\nPerbaiki output sebelumnya karena: ${msg}. Keluarkan satu JSON ringkas valid sesuai aturan level. Gunakan taskKind, answerMode, columnsUsed, formula atau rubricChecklist yang diwajibkan. Easy/Middle harus tasks: []. Pastikan dataset mendukung level dan tema yang diminta.`;
+      retryGuidance = `\n\nPerbaiki output sebelumnya karena: ${msg}. Keluarkan satu JSON ringkas valid sesuai aturan level. tasks wajib [] untuk semua level karena tugas dibuat pada permintaan terpisah. Pastikan dataset mendukung level dan tema yang diminta.`;
     }
   }
 
@@ -528,15 +641,7 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     structuredReferenceAt: caseStudy.structuredReferenceAt,
     recommendedFormulas: caseStudy.formulas.recommended,
     forbiddenFormulas: caseStudy.formulas.forbidden,
-    columns: caseStudy.dataset.columns.map((column) => {
-      const details = [
-        column.values ? `values: ${column.values.join(' | ')}` : '',
-        column.min !== undefined && column.max !== undefined ? `min ${column.min}, max ${column.max}` : '',
-        column.from && column.to ? `${column.from} s/d ${column.to}` : '',
-        column.expression ? `expression: ${column.expression}` : '',
-      ].filter(Boolean);
-      return `${column.name} (${column.type}${details.length ? `; ${details.join('; ')}` : ''})`;
-    }),
+    columns: caseStudy.dataset.columns.map(formatDatasetColumnForPrompt),
     taskNo,
     oldInstruction: oldTask.instruction,
   });

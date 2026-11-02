@@ -10,9 +10,9 @@ Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}}
 Context: {{companyName}}; {{theme}}; {{period}}. Industry guidance: {{industryProfile}}
 Recently used themes: {{recentThemes}}. Do not repeat these themes; use the new selected angle in the scenario and tasks.
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
-Task count: exactly {{taskCount}} | Seed: {{seed}} | Formula policy: {{levelFormulaPolicy}}
+Planned task count: {{taskCount}} | Seed: {{seed}} | Formula policy: {{levelFormulaPolicy}}
 Keep hints within {{hintMaxChars}} characters.
-Rules: Return strict valid JSON only. Keep every string one line and escaped. Use the selected random theme. Title/scenario/dataset match selected role and industry. Easy/Middle must return tasks: []. Advance must return exactly {{taskCount}} tasks with taskKind, answerMode, exact columnsUsed, and either executable A1 formula for computed or rubricChecklist for rubric. Allowed functions: {{levelFormulaPolicy}}. No answerKey or formula clues.
+Rules: Return strict valid JSON only. Keep every string one line and escaped. Use the selected random theme. Title/scenario/dataset match selected role and industry. Every level MUST return tasks: [] because tasks are created in a separate request. Do not invent answerKey or formula clues.
 Easy level restriction: Only SUM, AVERAGE, COUNT, MIN, MAX, IF. No SUMIFS, COUNTIFS, VLOOKUP, XLOOKUP.
 Dataset metadata: every column MUST use ONLY these closed types: time (HH:mm), integer, decimal, currency, date, name, category, id, text, derived. For integer/decimal/currency give min and max as whole JSON numbers (min <= max); for date give from and to as ISO dates "YYYY-MM-DD"; for category give values as non-empty strings; for id give a pattern like "INV-2026-####". Never mix number and string in min/max. Omit unused optional fields.
 IMPORTANT: Generate realistic column names like Tanggal_Transaksi, Qty, Status, Jam_Masuk, Jam_Pulang, Cuti, Harga, Nama_Pelanggan, Stok_Awal, Stok_Masuk, Stok_Keluar. Never use generic names like Column1 or Field1. Time columns such as Jam_Masuk and Jam_Pulang MUST use type "time" (never text). Never fill any cell with Lorem/Latin words.
@@ -25,6 +25,17 @@ Old instruction: {{oldInstruction}}
 Keep the hint within {{hintMaxChars}} characters.
 Return strict compact JSON only, no markdown or extra prose. Keep every string one line and escape quotes and backslashes. Include taskKind, answerMode, and exact columnsUsed. Computed tasks need one executable formula; rubric tasks need rubricChecklist. Use only available columns and allowed functions. Use semicolons and English function names. Formula must not start with =; the application adds it.
 {"task":{"no":{{taskNo}},"instruction":"string","hint":"string","targetResult":"string","taskKind":"calculation","answerMode":"computed","columnsUsed":["Qty"],"formula":"SUM(A2:A151)"}}`;
+const COMPACT_DEFAULT_GENERATE_TASKS_PROMPT = `You design {{batchSize}} practical Excel tasks (numbered {{startNo}} to {{endNo}}) for one Indonesian administrative case study. Return one compact JSON object only.
+Case: {{title}} | Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}}
+Scenario: {{scenario}}
+Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
+Formula policy: {{levelFormulaPolicy}}
+Available dataset columns: {{columns}}
+Dataset rows: {{rows}} (data starts at row 2 and ends at row {{lastRow}})
+Already used instructions you must not repeat: {{previousInstructions}}
+Keep hints within {{hintMaxChars}} characters and explanations within {{explanationMaxChars}} characters.
+Rules: Return strict valid JSON only, no markdown or prose. Return exactly {{batchSize}} tasks numbered {{startNo}} to {{endNo}}. Each task needs no, instruction, hint, targetResult, taskKind, answerMode, columnsUsed, and either formula (computed) or rubricChecklist (rubric). taskKind must be one of {{taskKinds}}; vary the kinds across the batch. columnsUsed must contain exact dataset headers only. Computed formulas must use only allowed functions, use A1 references on the single dataset sheet, be executable, use semicolons and English function names, and must NOT start with "=". Periodic tasks must state exact ISO start/end dates and include dateColumn. Rubric tasks need a concise rubricChecklist and the expected output in targetResult. Do not invent answer keys or fixed calculated values.
+{"tasks":[{"no":{{startNo}},"instruction":"string","hint":"string","targetResult":"string","taskKind":"calculation","answerMode":"computed","columnsUsed":["Qty"],"formula":"SUM(B2:B51)"}]}`;
 
 function getRandomItem<T>(arr: readonly T[], seedStr: string): T {
   let hash = 0;
@@ -48,6 +59,9 @@ export function loadPromptTemplate(templateName: string): string {
 
   if (templateName === 'regenerate-task.md') {
     return COMPACT_DEFAULT_REGENERATE_TASK_PROMPT;
+  }
+  if (templateName === 'generate-tasks.md') {
+    return COMPACT_DEFAULT_GENERATE_TASKS_PROMPT;
   }
   return COMPACT_DEFAULT_GENERATE_PROMPT;
 }
@@ -137,6 +151,65 @@ export function resolveTaskCount(
     );
   }
   return req.taskCount;
+}
+
+export function compileAdvanceTasksPrompt(params: {
+  title: string;
+  scenario: string;
+  level: Level;
+  role: string;
+  industry?: string;
+  excelVersion: string;
+  formulaStyle?: string;
+  structuredReferenceAt?: boolean;
+  columns: string[];
+  rows: number;
+  batchSize: number;
+  startNo: number;
+  endNo: number;
+  previousInstructions: string[];
+  hintMaxChars: number;
+  explanationMaxChars: number;
+}): string {
+  const template = loadPromptTemplate('generate-tasks.md');
+  const roleProfile = ROLE_PROFILES[params.role];
+  const policy = LEVEL_RULES[params.level];
+  const versionForbiddenFormulas = params.excelVersion === '2016/2019' ? M365_ONLY_FORMULAS : [];
+  const forbidden = Array.from(new Set([...policy.forbiddenFunctions, ...versionForbiddenFormulas]));
+
+  const replacements: Record<string, string> = {
+    '{{title}}': params.title,
+    '{{scenario}}': params.scenario,
+    '{{level}}': params.level,
+    '{{role}}': roleProfile?.label ?? params.role,
+    '{{roleDetails}}': roleProfile
+      ? `${roleProfile.label}: ${roleProfile.description}. Dataset fields: ${roleProfile.datasetSignals.join(', ')}`
+      : params.role,
+    '{{industry}}': params.industry ?? 'Tidak ditentukan',
+    '{{levelFormulaPolicy}}': `Diizinkan: ${policy.allowedFunctions.join(', ')}. Dilarang: ${forbidden.join(', ')}. Jenis tugas: ${policy.taskKinds.join(', ')}.`,
+    '{{excelVersion}}': params.excelVersion,
+    '{{formulaStyle}}': params.formulaStyle ?? 'Classic (cell/range references)',
+    '{{structuredReferenceAt}}': params.structuredReferenceAt === false
+      ? 'Tanpa @; gunakan referensi seluruh kolom tabel'
+      : 'Pakai @ untuk referensi baris aktif',
+    '{{columns}}': params.columns.join(', '),
+    '{{rows}}': String(params.rows),
+    '{{lastRow}}': String(params.rows + 1),
+    '{{batchSize}}': String(params.batchSize),
+    '{{startNo}}': String(params.startNo),
+    '{{endNo}}': String(params.endNo),
+    '{{taskKinds}}': policy.taskKinds.join(', '),
+    '{{previousInstructions}}': JSON.stringify(params.previousInstructions),
+    '{{hintMaxChars}}': String(params.hintMaxChars),
+    '{{explanationMaxChars}}': String(params.explanationMaxChars),
+  };
+
+  let compiled = template;
+  for (const [key, value] of Object.entries(replacements)) {
+    compiled = compiled.split(key).join(value);
+  }
+
+  return compiled;
 }
 
 export function compileRegenerateTaskPrompt(params: {

@@ -100,7 +100,7 @@ export function getSavedSettings(): SavedSettings {
     level: 'easy',
     role: 'Penjualan',
     excelVersion: 'Microsoft 365',
-    taskCount: 5,
+    taskCount: GENERATION_CONFIG.easy.defaultTasks,
     formulaStyle: 'classic',
     structuredReferenceAt: true,
     industry: 'Acak',
