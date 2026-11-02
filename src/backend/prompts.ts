@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { CaseStudy, GenerateRequest, Industry, Level } from '../shared/schema';
-import { ADMIN_ROLES, getRecommendedTaskCount, INDUSTRY_PROFILES, LEVEL_CONFIG, M365_ONLY_FORMULAS, ROLE_GENERATION_THEMES, ROLE_PROFILES, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
+import { GenerateRequest, Industry, Level } from '../shared/schema';
+import { ADMIN_ROLES, getRecommendedTaskCount, INDUSTRY_PROFILES, M365_ONLY_FORMULAS, ROLE_GENERATION_THEMES, ROLE_PROFILES, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
 import { GENERATION_CONFIG } from '../shared/generation-config';
+import { LEVEL_RULES } from '../shared/level-rules';
 
 const COMPACT_DEFAULT_GENERATE_PROMPT = `You design practical Excel case studies for Indonesian administrative work. Return one compact JSON object only.
 Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}}
@@ -11,171 +12,18 @@ Recently used themes: {{recentThemes}}. Do not repeat these themes; use the new 
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
 Task count: exactly {{taskCount}} | Seed: {{seed}} | Formula policy: {{levelFormulaPolicy}}
 Keep hints within {{hintMaxChars}} characters.
-Rules: Return strict valid JSON only, without markdown, comments, or prose outside the object. Keep every string on one line and escape double quotes and backslashes. Indonesian; use the selected random theme/angle in the scenario and tasks. The title, tasks, and dataset must match the selected admin role and industry; include specific role fields and industry products/categories; ensure task criteria match dataset fields; exactly {{taskCount}} tasks. Do not generate formulas, formula clues, or answer keys in this phase.
+Rules: Return strict valid JSON only. Keep every string one line and escaped. Use the selected random theme. Title/scenario/dataset match selected role and industry. Easy/Middle must return tasks: []. Advance must return exactly {{taskCount}} tasks with taskKind, answerMode, exact columnsUsed, and either executable A1 formula for computed or rubricChecklist for rubric. Allowed functions: {{levelFormulaPolicy}}. No answerKey or formula clues.
 Dataset metadata: for number/int/currency, optional range is exactly two whole JSON numbers [min,max] with min <= max; for date, optional range is two valid chronological ISO dates ["YYYY-MM-DD","YYYY-MM-DD"]. Never mix number and string values in range. Omit range for text/enum; use values only for enum as non-empty strings. Omit unused optional fields.
 Use supplied industry products/categories as realistic dataset values. Dataset numeric ranges are two whole JSON numbers; date ranges are two valid chronological ISO dates; enum values are non-empty strings. Omit unused optional fields.
-{"title":"string","scenario":"string","tasks":[{"no":1,"instruction":"string","hint":"string","targetResult":"string"}],"dataTraps":["string"],"dataset":{"sheetName":"Data_Admin","rows":150,"columns":[{"name":"Tanggal_Transaksi","type":"date","range":["2026-01-01","2026-03-31"]},{"name":"Qty","type":"int","range":[1,100]},{"name":"Status","type":"enum","values":["Selesai","Diproses"]}]}}`;
-const COMPACT_DEFAULT_REGENERATE_TASK_PROMPT = `Regenerate only task {{taskNo}} and its matching answer for this Indonesian Excel case.
+{"title":"string","scenario":"string","tasks":[],"dataTraps":["string"],"dataset":{"sheetName":"Data_Admin","rows":150,"columns":[{"name":"Tanggal_Transaksi","type":"date","range":["2026-01-01","2026-03-31"]},{"name":"Qty","type":"int","range":[1,100]},{"name":"Status","type":"enum","values":["Selesai","Diproses"]}]}}`;
+const COMPACT_DEFAULT_REGENERATE_TASK_PROMPT = `Regenerate only task {{taskNo}} for this Indonesian Excel case.
 Case: {{title}} | Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}} | Scenario: {{scenario}}
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
-Recommended: {{recommendedFormulas}} | Forbidden: {{forbiddenFormulas}} | Available columns: {{columns}}
+Formula policy: {{levelFormulaPolicy}} | Available columns: {{columns}}
 Old instruction: {{oldInstruction}}
-Keep the hint within {{hintMaxChars}} characters and explanation within {{explanationMaxChars}} characters.
-Return strict compact JSON only, no markdown or extra prose. Keep every string one line and escape quotes and backslashes. The instruction, hint, target, formula, and explanation must agree. Apply every stated condition; use only available columns and allowed formulas. Formula tasks must reference every dataset column named in their instruction or hint and must not mention unused columns. Use semicolons and English function names. Formula string must not start with =; the application adds it.
-{"task":{"no":{{taskNo}},"instruction":"string","hint":"string","targetResult":"string"},"answerKey":{"task":{{taskNo}},"formula":"SUM(A2:A151)","explanation":"string"}}`;
-
-const DEFAULT_GENERATE_PROMPT = `You are an expert curriculum designer and administrative business analyst who designs realistic Excel case studies for administrative roles in Indonesia.
-Your job is to generate a comprehensive, realistic Excel practice case study tailored to the given specifications.
-
-Parameters:
-- Level: {{level}} (Options: easy, middle, advance)
-- Administrative Role: {{role}} (e.g., Admin Penjualan, Admin Gudang/Inventory, Admin HRD/Absensi, Admin Keuangan/Kasir, Admin Pengadaan/Purchasing, Sekretaris/Admin Surat)
-- Administrative Role Responsibilities: {{roleDetails}}
-- Excel Version: {{excelVersion}} (Options: "2016/2019" or "Microsoft 365")
-- Formula Reference Style: {{formulaStyle}}
-- Structured Reference @ setting: {{structuredReferenceAt}}
-- Industry/Company context: {{companyName}} (Industry: {{industry}}, Theme: {{theme}}, Target Period: {{period}})
-- Industry-specific business and dataset guidance: {{industryProfile}}
-- Formula policy for this level: {{levelFormulaPolicy}}
-- Task Count: {{taskCount}}
-- Language: Indonesian
-- Random Seed: {{seed}}
-
-### Level Guidelines:
-1. **easy**:
-   - Formulas: SUM, AVERAGE, COUNT, MIN, MAX, IF, basic number and date formatting, sort, filter.
-   - If a task asks for an aggregate for only some rows, do not claim that filtering the sheet makes AVERAGE/SUM/COUNT ignore hidden rows. When conditional aggregate functions are forbidden, use the allowed basic functions in one array formula, such as \`=AVERAGE(IF(criteria_range=criteria; average_range; ""))\`. Explain that Microsoft 365 accepts it normally and Excel 2016/2019 requires Ctrl+Shift+Enter.
-   - Forbidden: VLOOKUP, XLOOKUP, INDEX, MATCH, Pivot Table, Macro/VBA.
-2. **middle**:
-   - Formulas: VLOOKUP (or XLOOKUP if Microsoft 365), SUMIF, SUMIFS, COUNTIF, COUNTIFS, IFERROR, TEXT, LEFT, RIGHT, MID, Data Validation.
-   - Excel Version 2016/2019: strictly forbid XLOOKUP, FILTER, UNIQUE, LET, LAMBDA.
-   - Data traps: insert intentional traps like text dates, trailing spaces in codes, empty cells, numbers stored as text.
-3. **advance**:
-   - Formulas: INDEX-MATCH, SUMPRODUCT, Pivot Table, Conditional Formatting with formulas, Named Ranges, nested IF/IFS, dynamic arrays (if M365).
-### CRITICAL RULES:
-- The selected administrative role and industry are mandatory. The title, scenario, every task, dataset columns, and enum values must all describe work in the selected role at the selected industry. Do not substitute another role or industry. Include a task that directly uses the selected role's responsibilities and at least one role-specific dataset field; generic fields like "barang" or "transaksi" alone are insufficient. Include at least one concrete product, service, or category from the selected industry profile in the dataset schema, not just the narrative.
-- Dataset rows will be generated from the dataset schema. Give every column a clear meaning for this role and industry. For enum columns, provide realistic values for the selected industry (use the supplied industry products/categories where suitable), never generic unrelated values. Include enough operational columns to calculate the requested task answers, and ensure every task criterion matches a value in the final dataset schema.
-- Dataset range typing is strict: numeric types use exactly two whole JSON numbers [min,max] with min <= max; date uses two real ISO date strings ["YYYY-MM-DD","YYYY-MM-DD"] in chronological order. Never mix number and string endpoints. Omit range for text and enum. Only enum may use values, as a non-empty array of strings. Omit optional fields that do not apply.
-- The standard case schema generates exactly one source-data sheet. Do not invent a master table, lookup sheet, or second source table that is absent from dataset.columns; every task formula must work with the generated source data. The separate KUNCI_JAWABAN sheet in the export is documentation, not a second data table.
-- Output MUST be valid JSON only matching the schema below.
-- Do NOT make fake download links! The dataset schema will be used by our code generator to create the real XLSX/CSV file.
-- Provide a clear, realistic Indonesian administrative scenario.
-- In answerKey, each formula MUST NOT use any formulas listed under forbidden.
-- Treat each task, hint, target, and answer as one contract: the answer formula must perform every filter/condition stated by the task, use the matching dataset columns, and produce the requested measure. Do not merely describe a manual filter before applying an unfiltered AVERAGE/SUM/COUNT; those functions still include filtered-out rows.
-- Before returning JSON, verify each formula-based task against its answer: every required criterion and referenced data column is present in the single formula, every task number has exactly one matching answer, and no answer uses a forbidden or unsupported formula.
-- If an instruction specifies multiple categorical criteria (for example layanan "Kilat" AND status "Terkirim"), the formula must implement every criterion, not merely one of them. Check that the generated dataset contains a column for each criterion.
-- For formula-based tasks, the answerKey formula field must be one copyable Excel formula, not prose or a sequence of formulas. Keep procedural tasks (Pivot Table, Data Validation, documentation) as concise step instructions.
-- Never invent a fixed numeric targetResult for rows that the application generates randomly. Use a verifiable outcome such as the expected output type, status, or a result the learner can compare after calculating it.
-- In answerKey, the explanation MUST be a thorough educational explanation:
-  1) Alasan mengapa rumus/fungsi ini yang paling tepat digunakan untuk kasus tersebut.
-  2) Bedah setiap argumen/kondisi rumus secara gamblang (misal pada SUMIFS: sebutkan rentang mana yang dijumlahkan, rentang mana tempat mengecek syarat, dan syarat/kondisi apa yang harus cocok; pada IF: kondisi apa yang diuji, apa hasil jika kondisi benar, apa hasil jika kondisi salah).
-  3) Jelaskan secara gamblang parameter penting (misal: mengapa ada angka 0 / FALSE pada VLOOKUP/MATCH untuk Exact Match, dan mengapa jika tidak diisi 0 bisa salah data).
-  4) Tips praktis agar tidak error (seperti penggunaan titik koma ; dan pembersihan spasi).
-- Use Indonesian Excel regional notation in every formula example, hint, and answer key: use semicolons (\`;\`) between function arguments and commas (\`,\`) for decimal values. Keep English function names. For example: \`=IF(A1>0; 1,5; 0)\` and \`=SUMIFS(C:C; A:A; "Jakarta")\`. Do not change commas inside quoted text.
-- Match every formula, hint, and answer key to Formula Reference Style. Classic MUST use cell/range references (for example \`C2\`, \`$D$2:$D$100\`) and must not use structured table column names. Modern MUST use structured references with the actual table and header names (for example \`TabelData[Qty Masuk]\`); when using a row-level reference, {{structuredReferenceAt}} specifies whether to use \`[@[Nama Kolom]]\` (current row) or \`[Nama Kolom]\` (whole table column). Choose references appropriate to the operation, and do not invent columns absent from the dataset.
-- dataTraps should be an array of strings (e.g. ["Spasi berlebih pada kode barang", "Tanggal tersimpan sebagai teks"]).
-- The tasks array MUST contain EXACTLY {{taskCount}} tasks (numbered 1 to {{taskCount}}). The answerKey array MUST also contain EXACTLY {{taskCount}} answers corresponding to each task (task: 1 to {{taskCount}}).
-- Each task in tasks must have:
-  - no: number (1, 2, ...)
-  - instruction: clear administrative assignment
-  - hint: clue on which columns/logic to use
-  - targetResult: benchmark/target figure or validation outcome that the user can verify without peeking at the answer key.
-- Every hint must name the same column(s), filter criteria, and calculation as its instruction and answer. Every dataset column named in a formula task's instruction or hint must be used by that task's formula; do not mention unused columns. For array formulas, identify the criteria range and value range and mention the required legacy array entry when applicable.
-- dataset must have:
-  - sheetName: string
-  - rows: number (100 to 300)
-  - columns: array of objects with name and type. Optional values are only for enum and must be non-empty strings. Optional range is [number, number] for number/int/currency or [ISO-date, ISO-date] for date; never mix endpoint types. Omit range for text/enum.
-
-Schema:
-\`\`\`json
-{
-  "title": "string",
-  "level": "{{level}}",
-  "role": "{{role}}",
-  "scenario": "string",
-  "tasks": [
-    {
-      "no": 1,
-      "instruction": "string",
-      "hint": "string",
-      "targetResult": "string"
-    }
-  ],
-  "dataTraps": ["string"],
-  "formulas": {
-    "recommended": ["string"],
-    "allowed": ["string"],
-    "forbidden": ["string"]
-  },
-  "dataset": {
-    "sheetName": "string",
-    "rows": 150,
-    "columns": [
-      { "name": "Tanggal_Transaksi", "type": "date", "range": ["2026-01-01", "2026-03-31"] },
-      { "name": "Qty", "type": "int", "range": [1, 100] },
-      { "name": "Status", "type": "enum", "values": ["Selesai", "Diproses"] },
-      { "name": "Catatan", "type": "text" }
-    ]
-  },
-  "answerKey": [
-    { "task": 1, "formula": "=FORMULA(...)", "explanation": "string" }
-  ]
-}
-\`\`\`
-Return ONLY JSON without any markdown code fences or conversational text.`;
-
-const DEFAULT_REGENERATE_TASK_PROMPT = `You are an expert Excel curriculum designer.
-Given the current Excel study case, regenerate ONLY task number {{taskNo}} with an alternative challenging task that fits the scenario, level, and rules.
-
-Current Case:
-- Title: {{title}}
-- Level: {{level}}
-- Role: {{role}}
-- Role Responsibilities: {{roleDetails}}
-- Industry: {{industry}}
-- Formula policy for this level: {{levelFormulaPolicy}}
-- Scenario: {{scenario}}
-- Excel Version: {{excelVersion}}
-- Formula Reference Style: {{formulaStyle}}
-- Structured Reference @ setting: {{structuredReferenceAt}}
-- Formulas Recommended: {{recommendedFormulas}}
-- Formulas Forbidden: {{forbiddenFormulas}}
-- Available Dataset Columns: {{columns}}
-
-Task to replace:
-- Task No: {{taskNo}}
-- Old Instruction: {{oldInstruction}}
-
-CRITICAL RULES:
-- Return ONLY valid JSON with keys: "task" and "answerKey".
-- "task": { "no": {{taskNo}}, "instruction": "...", "hint": "...", "targetResult": "..." }
-- "answerKey": { "task": {{taskNo}}, "formula": "=...", "explanation": "..." }
-- In "answerKey", "explanation" MUST be detailed: jelaskan alasan pemilihan rumus, bedah fungsi tiap argumen, dan terangkan mengapa parameter penting digunakan (misal: kenapa harus 0/FALSE untuk exact match, kenapa ada tanda $ untuk kunci rentang).
-- The formula MUST NOT use any formulas in forbidden list: {{forbiddenFormulas}}!
-- Apply every categorical criterion stated in the task. The standard case has one generated source-data sheet; do not reference a master/lookup table or another source sheet that is not included in the available dataset columns. \`KUNCI_JAWABAN\` is documentation, not a source table.
-- The new instruction, hint, target, and answer must describe the same operation. The formula must calculate the requested measure over the exact stated criteria and only reference available columns. An unfiltered AVERAGE/SUM/COUNT does not become criteria-aware when rows are manually filtered. If conditional aggregate functions are forbidden, use an allowed single array formula such as \`=AVERAGE(IF(criteria_range=criteria; average_range; ""))\`; explain Ctrl+Shift+Enter for Excel 2016/2019.
-- For formula-based tasks, the answerKey formula field must contain one copyable Excel formula, not prose or multiple formula steps. Keep procedural tasks as concise step instructions.
-- Use a verifiable target that does not assume fixed values in randomly generated rows.
-- Use Indonesian Excel regional notation in the formula and any formula shown in the hint: use semicolons (\`;\`) between function arguments and commas (\`,\`) for decimal values. Keep English function names and do not change commas inside quoted text.
-- Follow Formula Reference Style: Classic uses only cell/range references, not table column names. Modern uses structured references with the actual table/header names; follow the @ setting above for current-row versus whole-column references.
-
-Schema:
-\`\`\`json
-{
-  "task": {
-    "no": {{taskNo}},
-    "instruction": "string",
-    "hint": "string",
-    "targetResult": "string"
-  },
-  "answerKey": {
-    "task": {{taskNo}},
-    "formula": "=...",
-    "explanation": "string"
-  }
-}
-\`\`\`
-Return ONLY JSON without any markdown code fences.`;
+Keep the hint within {{hintMaxChars}} characters.
+Return strict compact JSON only, no markdown or extra prose. Keep every string one line and escape quotes and backslashes. Include taskKind, answerMode, and exact columnsUsed. Computed tasks need one executable formula; rubric tasks need rubricChecklist. Use only available columns and allowed functions. Use semicolons and English function names. Formula must not start with =; the application adds it.
+{"task":{"no":{{taskNo}},"instruction":"string","hint":"string","targetResult":"string","taskKind":"calculation","answerMode":"computed","columnsUsed":["Qty"],"formula":"SUM(A2:A151)"}}`;
 
 function getRandomItem<T>(arr: readonly T[], seedStr: string): T {
   let hash = 0;
@@ -219,7 +67,7 @@ export function compileGeneratePrompt(
   const roleProfile = ROLE_PROFILES[req.role];
   const roleOption = ADMIN_ROLES.find((item) => item.id === req.role);
   const industryProfile = INDUSTRY_PROFILES[industry];
-  const formulaPolicy = LEVEL_CONFIG[req.level];
+  const formulaPolicy = LEVEL_RULES[req.level];
   const versionForbiddenFormulas = req.excelVersion === '2016/2019' ? M365_ONLY_FORMULAS : [];
   const replacements: Record<string, string> = {
     '{{level}}': req.level,
@@ -231,7 +79,7 @@ export function compileGeneratePrompt(
         : req.role,
     '{{industry}}': industry,
     '{{industryProfile}}': `${industryProfile.focus}. Contoh produk/layanan: ${industryProfile.products.join(', ')}. Kategori relevan: ${industryProfile.categories.join(', ')}.`,
-    '{{levelFormulaPolicy}}': `Direkomendasikan: ${formulaPolicy.recommended.join(', ')}. Dilarang: ${Array.from(new Set([...formulaPolicy.forbidden, ...versionForbiddenFormulas])).join(', ')}.`,
+    '{{levelFormulaPolicy}}': `Boleh: ${formulaPolicy.allowedFunctions.join(', ')}. Dilarang: ${Array.from(new Set([...formulaPolicy.forbiddenFunctions, ...versionForbiddenFormulas])).join(', ')}. Jenis tugas: ${formulaPolicy.taskKinds.join(', ')}.`,
     '{{excelVersion}}': req.excelVersion,
     '{{formulaStyle}}': req.formulaStyle === 'modern' ? 'Modern (structured references)' : 'Classic (cell/range references)',
     '{{structuredReferenceAt}}': req.structuredReferenceAt === false
@@ -266,42 +114,6 @@ export function resolveGenerationTheme(req: GenerateRequest, seed: string): stri
     !recentThemes.has(theme.toLocaleLowerCase('id').replace(/\s+/g, ' ').trim()),
   );
   return getRandomItem(unusedThemes.length > 0 ? unusedThemes : themes, `${seed}-theme`);
-}
-
-export function compileAnswerKeyPrompt(caseStudy: CaseStudy): string {
-  const taskContext = caseStudy.tasks.map(({ no, instruction, hint, targetResult }) => ({
-    no,
-    instruction,
-    hint,
-    targetResult,
-  }));
-  const columnDetails = caseStudy.dataset.columns.map((column, index) => {
-    let columnNumber = index;
-    let columnLetter = '';
-    do {
-      columnLetter = String.fromCharCode(65 + (columnNumber % 26)) + columnLetter;
-      columnNumber = Math.floor(columnNumber / 26) - 1;
-    } while (columnNumber >= 0);
-    return {
-      column: columnLetter,
-      name: column.name,
-      type: column.type,
-      ...(column.values ? { values: column.values } : {}),
-      ...(column.range ? { range: column.range } : {}),
-    };
-  });
-  return `Generate formula clues and answer keys for this validated Indonesian Excel case. Return one compact JSON object only.
-The top-level key for formula clues MUST be exactly "formulas" with the nested keys "recommended", "allowed", and "forbidden". Do not rename these keys. Each nested value is an array of formula-name strings; each array may be empty only when that category has no applicable entries. Include at least one recommended formula. The top-level answer key is exactly "answerKey".
-Level: ${caseStudy.level}; Excel: ${caseStudy.excelVersion}; reference style: ${caseStudy.formulaStyle ?? 'classic'}; structured-reference @: ${caseStudy.structuredReferenceAt !== false}.
-Scenario: ${caseStudy.scenario}
-Tasks: ${JSON.stringify(taskContext)}
-Available source sheet: ${caseStudy.dataset.sheetName}; dataset columns in order: ${JSON.stringify(columnDetails)}
-Formula policy: ${JSON.stringify(LEVEL_CONFIG[caseStudy.level])}
-Return exactly one answer per task in task order. Each formula must satisfy every condition in its task, reference every dataset column named by that task, use only available columns and allowed formulas, and match the requested target. Date/period aggregates must apply both date bounds (>= start and <= end) to the date column; filtering worksheet rows is not a formula condition. If conditional aggregate functions are forbidden, use an allowed array formula with all conditions. Do not invent extra sheets, lookup tables, or fixed dataset results. Classic formulas must use the column letters above; Modern formulas must use actual table headers. Use one copyable formula for formula tasks and concise procedural steps for non-formula tasks. Use English function names and semicolons between arguments. Keep each explanation within ${GENERATION_CONFIG[caseStudy.level].explanationMaxChars} characters.
-Each answerKey formula string must contain the Excel formula WITHOUT a leading equals sign; the application adds it. Keep every string on one line and escape embedded double quotes and backslashes.
-Example JSON shape (keep these key names exactly; replace example values with formulas appropriate to the case):
-{"formulas":{"recommended":["SUMIFS"],"allowed":["SUM","IF"],"forbidden":["VLOOKUP"]},"answerKey":[{"task":1,"formula":"SUM(A2:A151)","explanation":"Jumlahkan nilai pada rentang data."}]}
-Return strict valid JSON only, no markdown, comments, trailing commas, or prose outside the object.`;
 }
 
 export function resolveIndustry(industry: GenerateRequest['industry'], seed: string): Exclude<Industry, 'Acak'> {
@@ -353,10 +165,10 @@ export function compileRegenerateTaskPrompt(params: {
       : params.role,
     '{{industry}}': params.industry ?? 'Tidak ditentukan',
     '{{levelFormulaPolicy}}': (() => {
-      const policy = LEVEL_CONFIG[params.level];
+      const policy = LEVEL_RULES[params.level];
       const versionForbiddenFormulas = params.excelVersion === '2016/2019' ? M365_ONLY_FORMULAS : [];
-      const forbidden = Array.from(new Set([...policy.forbidden, ...versionForbiddenFormulas]));
-      return `Direkomendasikan: ${policy.recommended.join(', ')}. Dilarang: ${forbidden.join(', ')}.`;
+      const forbidden = Array.from(new Set([...policy.forbiddenFunctions, ...versionForbiddenFormulas]));
+      return `Diizinkan: ${policy.allowedFunctions.join(', ')}. Dilarang: ${forbidden.join(', ')}. Jenis tugas: ${policy.taskKinds.join(', ')}.`;
     })(),
     '{{scenario}}': params.scenario,
     '{{excelVersion}}': params.excelVersion,

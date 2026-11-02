@@ -227,8 +227,12 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
             const isRegenerating = regeneratingTaskNo === task.no;
             const isKeyOpen = revealedKeys.includes(task.no);
             const answerItem = caseStudy.answerKey.find((a) => a.task === task.no);
-            const normalizedFormula = answerItem ? normalizeExcelFormulaLocale(answerItem.formula) : '';
-            const breakdown = answerItem ? analyzeFormula(answerItem.formula) : null;
+            const normalizedFormula = answerItem?.mode === 'computed' && answerItem.formula
+              ? normalizeExcelFormulaLocale(answerItem.formula)
+              : '';
+            const breakdown = answerItem?.mode === 'computed' && answerItem.formula
+              ? analyzeFormula(answerItem.formula)
+              : null;
 
             return (
               <div
@@ -352,6 +356,20 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
                     {/* Revealed Answer Key Details */}
                     {isKeyOpen && (
                       <div className="mt-3 p-4 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/60 rounded-xl space-y-3 animate-fadeIn">
+                        {answerItem.mode === 'rubric' ? (
+                          <div className="space-y-2 text-sm text-gray-800 dark:text-gray-200">
+                            <span className="inline-flex rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200">
+                              Dinilai dengan rubrik
+                            </span>
+                            <p>{answerItem.explanation}</p>
+                            <ul className="list-disc space-y-1 pl-5 text-xs">
+                              {answerItem.rubricChecklist.map((item, index) => (
+                                <li key={`${task.no}-rubric-${index}`}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : (
+                          <>
                         {/* Formula Bar with Copy */}
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[11px] font-bold text-amber-900 dark:text-amber-200 flex items-center space-x-1">
@@ -384,6 +402,12 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
                           <Terminal className="w-4 h-4 text-gray-500 flex-shrink-0" />
                           <code>{normalizedFormula}</code>
                         </div>
+                        {answerItem.expectedValue !== undefined && (
+                          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-800 dark:bg-emerald-950/30">
+                            <span className="font-bold text-emerald-900 dark:text-emerald-200">Nilai jawaban yang benar: </span>
+                            <span className="font-mono text-emerald-800 dark:text-emerald-100">{String(answerItem.expectedValue)}</span>
+                          </div>
+                        )}
 
                         {/* Pola / Blueprint & Bedah Kondisi Rumus */}
                         {breakdown?.pattern && (
@@ -495,6 +519,8 @@ export const TasksSection: React.FC<TasksSectionProps> = ({
                               ))}
                             </div>
                           </div>
+                        )}
+                          </>
                         )}
                       </div>
                     )}

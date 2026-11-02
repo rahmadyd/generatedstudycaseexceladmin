@@ -1,6 +1,9 @@
 import { CaseStudy, CaseStudySchema } from '../shared/schema';
-import { getIndustryColumnValues, INDUSTRY_PROFILES, LEVEL_CONFIG, M365_ONLY_FORMULAS, ROLE_PROFILES } from '../shared/constants';
+import { getIndustryColumnValues, INDUSTRY_PROFILES, M365_ONLY_FORMULAS, ROLE_PROFILES } from '../shared/constants';
 import { normalizeExcelFormulaLocale } from '../shared/excel-formula-locale';
+import { generateDatasetRows } from '../shared/dataset-generator';
+import { validateTaskCalculation } from './formula-engine';
+import { getFormulaFunctionNames, LEVEL_RULES } from '../shared/level-rules';
 
 export interface ValidationResult {
   valid: boolean;
@@ -13,22 +16,6 @@ function containsAny(text: string, terms: string[]): boolean {
     value.toLocaleLowerCase('id').replace(/[_-]+/g, ' ');
   const normalized = normalize(text);
   return terms.some((term) => normalized.includes(normalize(term)));
-}
-
-function containsWholeValue(text: string, value: string): boolean {
-  const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapedValue}($|[^\\p{L}\\p{N}])`, 'iu').test(text);
-}
-
-function getExcelColumnName(index: number): string {
-  let columnNumber = index + 1;
-  let columnName = '';
-  while (columnNumber > 0) {
-    const remainder = (columnNumber - 1) % 26;
-    columnName = String.fromCharCode(65 + remainder) + columnName;
-    columnNumber = Math.floor((columnNumber - 1) / 26);
-  }
-  return columnName;
 }
 
 function sanitizeDatasetRange(
@@ -79,66 +66,37 @@ function sanitizeDatasetValues(values: unknown): string[] | undefined {
   return sanitized.length > 0 ? sanitized : undefined;
 }
 
-function normalizeNumericLiteral(value: string): string {
-  const cleaned = value.replace(/[^\d.,]/g, '');
-  const normalized = cleaned
-    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
-    .replace(/,(?=\d{3}(?:\D|$))/g, '')
-    .replace(',', '.');
-  const number = Number(normalized);
-  return Number.isFinite(number) ? String(number) : '';
-}
-
-function getNumericCriteria(text: string): Array<{ operator: string; value: string }> {
-  const criteria: Array<{ operator: string; value: string }> = [];
-  const pattern =
-    /(?:(minimal(?:nya)?|minimum|setidaknya|setidak-tidaknya|sekurang-kurangnya|paling sedikit|paling tidak|tidak kurang dari|maksimal(?:nya)?|maximum|paling banyak|sebanyak-banyaknya|tidak lebih dari|lebih dari(?: atau sama dengan)?|lebih besar(?: dari)?(?: atau sama dengan)?|kurang dari(?: atau sama dengan)?|lebih kecil(?: dari)?(?: atau sama dengan)?|di bawah|di atas)|([<>]=?))\s*(?:rp\s*)?(\d[\d.,]*)(?:\s*(miliar|milyar|juta|jt|ribu|rb)\b)?/gi;
-
-  for (const match of text.matchAll(pattern)) {
-    const phrase = (match[1] ?? match[2]).toLocaleLowerCase('id');
-    let operator: string;
-    if (
-      phrase.includes('minimal') ||
-      phrase.includes('minimum') ||
-      phrase.includes('setidaknya') ||
-      phrase.includes('sekurang-kurangnya') ||
-      phrase.includes('paling tidak') ||
-      phrase.includes('tidak kurang dari') ||
-      phrase.includes('paling sedikit') ||
-      (phrase.includes('atau sama dengan') && (phrase.includes('lebih') || phrase.includes('besar')))
-    ) {
-      operator = '>=';
-    } else if (
-      phrase.includes('maksimal') ||
-      phrase.includes('maximum') ||
-      phrase.includes('paling banyak') ||
-      phrase.includes('sebanyak-banyaknya') ||
-      phrase.includes('tidak lebih dari')
-    ) {
-      operator = '<=';
-    } else if (phrase.includes('kurang dari') || phrase.includes('lebih kecil') || phrase.includes('di bawah')) {
-      operator = phrase.includes('atau sama dengan') ? '<=' : '<';
-    } else if (phrase.includes('di atas')) {
-      operator = '>';
-    } else if (phrase.includes('lebih dari')) {
-      operator = phrase.includes('atau sama dengan') ? '>=' : '>';
-    } else {
-      operator = phrase;
-    }
-
-    const multiplier = {
-      miliar: 1_000_000_000,
-      milyar: 1_000_000_000,
-      juta: 1_000_000,
-      jt: 1_000_000,
-      ribu: 1_000,
-      rb: 1_000,
-    }[match[4]?.toLocaleLowerCase('id') ?? ''] ?? 1;
-    const parsedValue = Number(normalizeNumericLiteral(match[3])) * multiplier;
-    const value = Number.isFinite(parsedValue) ? String(parsedValue) : '';
-    if (value) criteria.push({ operator, value });
+function preSanitizeRawJson(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.dataset !== 'object' || record.dataset === null || Array.isArray(record.dataset)) {
+    return raw;
   }
-  return criteria;
+  const dataset = record.dataset as Record<string, unknown>;
+  const parsedRows = typeof dataset.rows === 'string' ? Number(dataset.rows) : dataset.rows;
+  const columns = Array.isArray(dataset.columns)
+    ? dataset.columns.map((rawColumn) => {
+        if (typeof rawColumn !== 'object' || rawColumn === null || Array.isArray(rawColumn)) return rawColumn;
+        const column = rawColumn as Record<string, unknown>;
+        let type = column.type === undefined ? undefined : String(column.type).toLowerCase();
+        if (type === 'string') type = 'text';
+        if (type === 'integer') type = 'int';
+        return {
+          ...column,
+          type,
+          values: type === 'enum' ? sanitizeDatasetValues(column.values) : column.values,
+          range: sanitizeDatasetRange(column.range, type),
+        };
+      })
+    : dataset.columns;
+  return {
+    ...record,
+    dataset: {
+      ...dataset,
+      rows: Number.isSafeInteger(parsedRows) ? parsedRows : dataset.rows,
+      columns,
+    },
+  };
 }
 
 export function getCaseStudyAlignmentIssues(
@@ -212,289 +170,102 @@ export function getTaskAnswerAlignmentIssues(
   const tasks = taskNumbers
     ? caseStudy.tasks.filter((task) => taskNumbers.includes(task.no))
     : caseStudy.tasks;
-  const answerKey = taskNumbers
+  const answers = taskNumbers
     ? caseStudy.answerKey.filter((answer) => taskNumbers.includes(answer.task))
     : caseStudy.answerKey;
-  const taskNumbersInCase = new Set(caseStudy.tasks.map((task) => task.no));
-
-  if (!taskNumbers) {
-    if (taskNumbersInCase.size !== caseStudy.tasks.length) {
-      issues.push('nomor tugas harus unik');
-    }
-    if (caseStudy.tasks.some((task, index) => task.no !== index + 1)) {
-      issues.push('nomor tugas harus berurutan dari 1');
-    }
-  }
+  const datasetRows = generateDatasetRows(caseStudy);
+  const availableColumns = new Set(caseStudy.dataset.columns.map((column) => column.name));
+  const forbiddenFunctions = new Set(LEVEL_RULES[caseStudy.level].forbiddenFunctions);
+  const allowedFunctions = new Set(LEVEL_RULES[caseStudy.level].allowedFunctions);
+  const rubricTaskKinds = new Set([
+    'formatting',
+    'data-validation',
+    'pivot-table',
+    'conditional-formatting',
+    'named-range',
+    'portfolio',
+  ]);
 
   for (const task of tasks) {
-    const answers = answerKey.filter((answer) => answer.task === task.no);
-    // A staged case remains usable while its separately generated keys are pending.
-    if (answers.length === 0 && caseStudy.answerKeyStatus === 'pending') {
-      continue;
-    }
-    if (answers.length !== 1) {
+    const taskAnswers = answers.filter((answer) => answer.task === task.no);
+    if (taskAnswers.length !== 1) {
       issues.push(`tugas ${task.no} harus memiliki tepat satu kunci jawaban yang cocok`);
       continue;
     }
 
-    const formula = answers[0].formula.trim();
-    const functionNames = new Set(
-      Array.from(formula.matchAll(/\b([A-Z][A-Z0-9.]*)\s*\(/gi), (match) => match[1].toUpperCase()),
-    );
-
-    const forbiddenFormulas = [
-      ...caseStudy.formulas.forbidden,
-      ...LEVEL_CONFIG[caseStudy.level].forbidden,
-      ...(caseStudy.excelVersion === '2016/2019' ? M365_ONLY_FORMULAS : []),
-    ];
-    for (const forbidden of forbiddenFormulas) {
-      const forbiddenFunctions = forbidden.toUpperCase().match(/[A-Z][A-Z0-9.]*/g) ?? [];
-      const usedForbidden = forbiddenFunctions.find((name) =>
-        new RegExp(`\\b${name}\\s*\\(`, 'i').test(formula),
-      );
-      if (usedForbidden) {
-        issues.push(`kunci tugas ${task.no} memakai fungsi terlarang ${usedForbidden}`);
-      }
+    const answer = taskAnswers[0];
+    if (answer.mode !== task.answerMode) {
+      issues.push(`mode kunci jawaban tugas ${task.no} tidak sesuai dengan mode tugas`);
+    }
+    if (rubricTaskKinds.has(task.taskKind) && task.answerMode !== 'rubric') {
+      issues.push(`jenis tugas ${task.taskKind} harus menggunakan mode rubric`);
+    }
+    if (!LEVEL_RULES[caseStudy.level].taskKinds.includes(task.taskKind)) {
+      issues.push(`jenis tugas ${task.taskKind} tidak diizinkan pada level ${caseStudy.level}`);
     }
 
-    const taskText = `${task.instruction} ${task.hint}`.toLocaleLowerCase('id');
-    const isAggregate = /\b(rata-rata|rerata|average|total|jumlahkan|frekuensi|persentase|jumlah keseluruhan|nilai tertinggi|nilai terendah)\b/i
-      .test(taskText);
-    const mentionsFilterCriterion =
-      /\b(berdasarkan|khusus|hanya|filter|difilter|syarat|kriteria|jika|apabila|bila|ketika|berstatus)\b/i.test(taskText) ||
-      /\buntuk\s+(layanan|kategori|status|shift|wilayah|departemen|jenis|cabang|produk|barang|pegawai|vendor|pelanggan)\b/i.test(taskText);
-    const namesEnumValue = caseStudy.dataset.columns.some((column) =>
-      column.values?.some((value) => containsWholeValue(taskText, value)),
-    );
-    const requiredEnumCriteria = caseStudy.dataset.columns.flatMap((column, index) =>
-      column.type === 'enum'
-        ? (column.values ?? [])
-            .filter((value) => containsWholeValue(taskText, value))
-            .map((value) => ({
-              column: column.name,
-              columnLetter: getExcelColumnName(index),
-              value,
-            }))
-        : [],
-    );
-    const hasCriteriaAwareAggregate =
-      /\b(?:SUMIFS?|COUNTIFS?|AVERAGEIFS?|SUMPRODUCT|SUBTOTAL)\s*\(/i.test(formula) ||
-      (/\b(?:AVERAGE|SUM)\s*\(\s*IF\s*\(/i.test(formula) &&
-        (caseStudy.excelVersion === 'Microsoft 365' ||
-          /ctrl\s*\+\s*shift\s*\+\s*enter/i.test(answers[0].explanation))) ||
-      (functionNames.has('IF') &&
-        /\b(?:AVERAGE|SUM|COUNT)\s*\(/i.test(formula) &&
-        /\b(kolom bantu|helper column)\b/i.test(`${task.instruction} ${task.hint}`));
-
-    if (
-      formula.startsWith('=') &&
-      isAggregate &&
-      (mentionsFilterCriterion || namesEnumValue) &&
-      !hasCriteriaAwareAggregate
-    ) {
-      issues.push(
-        `tugas ${task.no} meminta agregasi dengan kriteria, tetapi rumus tidak menerapkan kriteria tersebut (AVERAGE/SUM/COUNT biasa tetap menghitung baris yang difilter)`,
-      );
+    // Validasi columnsUsed
+    if (task.columnsUsed.length === 0) {
+      issues.push(`tugas ${task.no} harus menyebutkan columnsUsed`);
+    }
+    const missingColumns = [...task.columnsUsed, ...answer.columnsUsed]
+      .filter((column) => !availableColumns.has(column));
+    for (const column of new Set(missingColumns)) {
+      issues.push(`tugas ${task.no} menggunakan kolom yang tidak ada: ${column}`);
+    }
+    if (task.dateColumn && !availableColumns.has(task.dateColumn)) {
+      issues.push(`tugas ${task.no} menggunakan dateColumn yang tidak ada: ${task.dateColumn}`);
     }
 
-    const dateWindowRequested =
-      /\b(bulan|minggu|kuartal|triwulan|periode|rentang|antara|hingga|sampai|sejak)\b/i.test(taskText);
-    if (formula.startsWith('=') && isAggregate && dateWindowRequested) {
-      const normalizedDateTaskText = taskText.replace(/[_\s]+/g, ' ');
-      const dateColumns = caseStudy.dataset.columns.filter((column) =>
-        column.type === 'date',
-      );
-      const mentionedDateColumn = dateColumns.find((column) =>
-        containsWholeValue(normalizedDateTaskText, column.name.replace(/[_\s]+/g, ' ')),
-      ) ?? (dateColumns.length === 1 ? dateColumns[0] : undefined);
-      if (!mentionedDateColumn && dateColumns.length > 1) {
-        issues.push(
-          `tugas ${task.no} meminta agregasi berdasarkan periode, tetapi tidak menentukan kolom tanggal yang digunakan`,
-        );
+    // Validasi mode rubric
+    if (answer.mode === 'rubric') {
+      if (answer.rubricChecklist.length === 0) {
+        issues.push(`tugas ${task.no} mode rubric harus memiliki checklist`);
       }
-      if (
-        mentionedDateColumn &&
-        (/\b(tanggal|tgl|date|waktu)\b/i.test(normalizedDateTaskText) ||
-          dateColumns.length === 1 ||
-          containsWholeValue(normalizedDateTaskText, mentionedDateColumn.name.replace(/[_\s]+/g, ' ')))
-      ) {
-        const dateColumnIndex = caseStudy.dataset.columns.indexOf(mentionedDateColumn);
-        const dateColumnLetter = getExcelColumnName(dateColumnIndex);
-        const formulaReferencesDateColumn = caseStudy.formulaStyle === 'modern'
-          ? formula.includes(`[${mentionedDateColumn.name}]`)
-          : new RegExp(`\\$?${dateColumnLetter}\\$?\\d+`, 'i').test(formula);
-        const hasDateWindowBounds = formula.includes('>=') && formula.includes('<=');
-        if (!formulaReferencesDateColumn || !hasDateWindowBounds) {
-          issues.push(
-            `kunci tugas ${task.no} meminta agregasi periode, tetapi rumus harus merujuk kolom ${mentionedDateColumn.name} dan menerapkan batas tanggal >= dan <=`,
-          );
-        }
+      if (answer.formula?.trim() || task.formula?.trim()) {
+        issues.push(`tugas ${task.no} mode rubric tidak boleh memiliki formula`);
       }
+      continue;
     }
 
-    if (
-      formula.startsWith('=') &&
-      requiredEnumCriteria.length > 0 &&
-      (isAggregate || mentionsFilterCriterion)
-    ) {
-      for (const criterion of requiredEnumCriteria) {
-        if (!containsWholeValue(formula, criterion.value)) {
-          issues.push(
-            `kunci tugas ${task.no} tidak menerapkan kriteria "${criterion.value}" pada kolom ${criterion.column}`,
-          );
-        }
-      }
+    // Validasi mode computed
+    const formula = answer.formula?.trim();
+    if (!formula) {
+      issues.push(`tugas ${task.no} mode computed harus memiliki formula`);
+      continue;
     }
 
-    if (formula.startsWith('=')) {
-      const requiredNumericCriteria = getNumericCriteria(taskText);
-      for (const criterion of requiredNumericCriteria) {
-        const operator = criterion.operator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const condition = new RegExp(`${operator}\\s*"?\\s*&?\\s*(\\d[\\d.,]*)`, 'i').exec(formula);
-        const hasCriterion = condition !== null && normalizeNumericLiteral(condition[1]) === criterion.value;
-        if (!hasCriterion) {
-          issues.push(
-            `kunci tugas ${task.no} tidak menerapkan kondisi ${criterion.operator} ${criterion.value} yang disebutkan pada instruksi`,
-          );
-        }
-      }
-
-      const referencedSheets = Array.from(
-        formula.matchAll(/(?:'((?:[^']|'')+)'|([A-Za-z_][A-Za-z0-9_. ]*))!/g),
-        (match) => (match[1] ?? match[2]).replace(/''/g, "'").trim().toLocaleLowerCase('id'),
-      );
-      const datasetSheetName = caseStudy.dataset.sheetName.toLocaleLowerCase('id');
-      for (const sheetName of referencedSheets) {
-        if (sheetName !== datasetSheetName) {
-          issues.push(
-            `kunci tugas ${task.no} merujuk sheet sumber "${sheetName}" yang tidak tersedia; dataset hanya menyediakan "${caseStudy.dataset.sheetName}"`,
-          );
-        }
-      }
+    // Validasi fungsi terlarang dengan regex yang benar
+    const functionNames = getFormulaFunctionNames(formula);
+    const forbidden = functionNames.find((name) => forbiddenFunctions.has(name));
+    if (forbidden) {
+      issues.push(`ERROR FATAL: Kunci tugas ${task.no} memakai fungsi terlarang "${forbidden}" pada level ${caseStudy.level}. Silakan ganti dengan fungsi yang diizinkan: ${Array.from(allowedFunctions).join(', ')}.`);
+      continue;
     }
 
-    if (formula.startsWith('=')) {
-      const normalizedTaskText = taskText.replace(/[_\s]+/g, ' ');
-      const formulaWithoutText = formula.replace(/"(?:[^"]|"")*"/g, '""');
-      const referencedColumns = new Set(
-        Array.from(
-          formulaWithoutText.matchAll(/\$?([A-Z]{1,3})\$?\d+/gi),
-          (match) => ({
-            letter: match[1].toUpperCase(),
-            isSheetReference: formulaWithoutText[match.index! - 1] === '!',
-          }),
-        ),
-      );
-      const localReferencedColumns = new Set(
-        Array.from(referencedColumns)
-          .map((reference) => reference.letter),
-      );
-      const mentionedDatasetColumns = caseStudy.dataset.columns
-        .map((column, index) => ({
-          name: column.name,
-          columnLetter: getExcelColumnName(index),
-          normalizedName: column.name.replace(/[_\s]+/g, ' ').toLocaleLowerCase('id'),
-          values: caseStudy.dataset.columns[index].values ?? [],
-        }))
-        .filter((column) => {
-          if (column.values.some((value) => containsWholeValue(taskText, value))) {
-            return true;
-          }
-          if (normalizedTaskText.includes(column.normalizedName)) {
-            const isOutputStatus =
-              column.normalizedName === 'status' &&
-              /\b(beri|tentukan|menentukan|klasifikasikan|isi|buat)\s+status\b/i.test(taskText);
-            return !isOutputStatus;
-          }
-          const genericTerms = new Set([
-            'transaksi',
-            'data',
-            'baris',
-            'nomor',
-            'invoice',
-            'voucher',
-            'jumlah',
-            'total',
-            'kode',
-            'nama',
-            'barang',
-            'produk',
-            'status',
-            'stok',
-            'awal',
-            'akhir',
-            'masuk',
-            'keluar',
-            'persediaan',
-            'saldo',
-            'tanggal',
-            'qty',
-            'harga',
-            'biaya',
-            'nominal',
-            'nilai',
-          ]);
-          return column.normalizedName
-            .split(' ')
-            .filter((part) => part.length >= 3 && !genericTerms.has(part))
-            .some((part) => containsWholeValue(normalizedTaskText, part));
-        });
-
-      for (const column of mentionedDatasetColumns) {
-        const formulaReferencesColumn = caseStudy.formulaStyle === 'modern'
-          ? formula.includes(`[${column.name}]`)
-          : localReferencedColumns.has(column.columnLetter);
-        if (!formulaReferencesColumn) {
-          issues.push(
-            `tugas ${task.no} menyebut kolom ${column.name}, tetapi rumus tidak merujuk kolom tersebut`,
-          );
-        }
-      }
+    const unsupported = functionNames.find((name) => !allowedFunctions.has(name));
+    if (unsupported) {
+      issues.push(`kunci tugas ${task.no} memakai fungsi ${unsupported} yang tidak diizinkan pada level ${caseStudy.level}`);
+      continue;
     }
-  }
 
-  if (!taskNumbers) {
-    for (const answer of caseStudy.answerKey) {
-      if (!taskNumbersInCase.has(answer.task)) {
-        issues.push(`kunci jawaban merujuk ke tugas ${answer.task} yang tidak ada`);
+    // Validasi eksekusi formula
+    try {
+      const expected = validateTaskCalculation(task, formula, caseStudy, datasetRows);
+      if (answer.expectedValue === undefined) {
+        issues.push(`tugas ${task.no} belum memiliki expectedValue hasil perhitungan`);
+      } else if (answer.expectedValue !== expected) {
+        issues.push(`expectedValue tugas ${task.no} tidak sesuai hasil eksekusi formula`);
       }
+    } catch (error) {
+      issues.push(`formula tugas ${task.no} gagal dieksekusi: ${(error as Error).message}`);
     }
   }
 
   return issues;
 }
 
-function preSanitizeRawJson(raw: any): any {
-  if (typeof raw !== 'object' || raw === null) return raw;
 
-  // 1. Sanitize dataset
-  if (raw.dataset && typeof raw.dataset === 'object') {
-    if (typeof raw.dataset.rows === 'string') {
-      const parsedRows = Number(raw.dataset.rows);
-      if (Number.isSafeInteger(parsedRows)) raw.dataset.rows = parsedRows;
-    }
-    if (Array.isArray(raw.dataset.columns)) {
-      raw.dataset.columns = raw.dataset.columns.map((c: any) => {
-        if (typeof c !== 'object' || c === null) return c;
-        let colType = c.type === undefined ? undefined : String(c.type).toLowerCase();
-        if (colType === 'string') colType = 'text';
-        if (colType === 'integer') colType = 'int';
-        return {
-          ...c,
-          type: colType,
-          values: colType === 'enum' ? sanitizeDatasetValues(c.values) : c.values,
-          range: sanitizeDatasetRange(c.range, colType),
-        };
-      });
-    }
-  }
-
-  return raw;
-}
-
-/**
- * Validates the raw JSON output from AI against Zod schema and business logic rules
- */
 export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVersion?: string): ValidationResult {
   if (typeof rawJson === 'object' && rawJson !== null && !Array.isArray(rawJson)) {
     const raw = rawJson as Record<string, unknown>;
@@ -557,52 +328,21 @@ export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVers
       column.values = industryValues;
     }
   }
+  const excelVersion = expectedExcelVersion || caseStudy.excelVersion || 'Microsoft 365';
+  const levelRules = LEVEL_RULES[caseStudy.level];
+  const versionForbidden = excelVersion === '2016/2019'
+    ? M365_ONLY_FORMULAS
+    : [];
+  caseStudy.formulas = {
+    recommended: levelRules.allowedFunctions.filter((name) => !versionForbidden.includes(name)),
+    allowed: levelRules.allowedFunctions.filter((name) => !versionForbidden.includes(name)),
+    forbidden: [...levelRules.forbiddenFunctions, ...versionForbidden],
+  };
   caseStudy.answerKey = caseStudy.answerKey.map((item) => ({
     ...item,
-    formula: normalizeExcelFormulaLocale(item.formula),
+    ...(item.formula ? { formula: normalizeExcelFormulaLocale(item.formula) } : {}),
   }));
-  const forbidden = [
-    ...(caseStudy.formulas?.forbidden || []),
-    ...LEVEL_CONFIG[caseStudy.level].forbidden,
-  ].map((formula) => formula.toUpperCase().trim());
-  const excelVersion = expectedExcelVersion || caseStudy.excelVersion || 'Microsoft 365';
-
-  // If Excel version is 2016/2019, M365-only functions must be forbidden and removed from recommended
-  if (excelVersion === '2016/2019') {
-    for (const m365Formula of M365_ONLY_FORMULAS) {
-      if (!forbidden.includes(m365Formula)) {
-        forbidden.push(m365Formula);
-      }
-      caseStudy.formulas.recommended = caseStudy.formulas.recommended.filter(
-        (f) => f.toUpperCase().trim() !== m365Formula
-      );
-    }
-  }
-  caseStudy.formulas.forbidden = Array.from(new Set(forbidden));
-  const forbiddenSet = new Set(caseStudy.formulas.forbidden);
-  const usesForbiddenFormula = (formula: string) => {
-    const formulaNames = new Set<string>(
-      formula.toUpperCase().match(/[A-Z][A-Z0-9.]*/g) ?? [],
-    );
-    return Array.from(forbiddenSet).some((forbiddenFormula) =>
-      (forbiddenFormula.match(/[A-Z][A-Z0-9.]*/g) ?? []).some((name) =>
-        formulaNames.has(name),
-      ),
-    );
-  };
-  caseStudy.formulas.recommended = caseStudy.formulas.recommended.filter(
-    (formula) => !usesForbiddenFormula(formula),
-  );
-  caseStudy.formulas.allowed = caseStudy.formulas.allowed.filter(
-    (formula) => !usesForbiddenFormula(formula),
-  );
-
-  // Ensure dataset rows is reasonable (100 to 500)
-  if (caseStudy.dataset) {
-    if (!caseStudy.dataset.rows || caseStudy.dataset.rows < 50) {
-      caseStudy.dataset.rows = 150;
-    }
-  }
+  caseStudy.dataset.rows = Math.max(50, Math.min(caseStudy.dataset.rows || 150, 500));
 
   return {
     valid: true,

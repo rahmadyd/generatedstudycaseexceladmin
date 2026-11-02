@@ -1,0 +1,229 @@
+import { faker } from '@faker-js/faker';
+import { CaseStudy, DatasetColumn, DatasetSpec, Industry, Level } from './schema';
+import { getIndustryColumnValues, INDUSTRY_PROFILES } from './constants';
+
+// Simple deterministic hash to number for seeded PRNG
+function cyrb53(str: string, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed,
+    h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0, ch; i < str.length; i++) {
+    ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+
+export type DataRow = Record<string, string | number | null>;
+
+export interface DatasetGenerationContext {
+  seed: string;
+  level: Level;
+  industry?: Industry;
+  dataset: DatasetSpec;
+}
+
+/**
+ * Generates realistic dataset rows based on CaseStudy.dataset schema and seed.
+ * For Middle and Advance levels, automatically injects intentional data traps!
+ */
+export function generateDatasetRows(context: DatasetGenerationContext | CaseStudy): DataRow[] {
+  const seedNum = cyrb53(context.seed || 'excel-admin-seed');
+  faker.seed(seedNum);
+
+  const { columns, rows: targetRowCount } = context.dataset;
+  const rowCount = Math.max(50, Math.min(targetRowCount || 150, 500));
+  const isTrapLevel = context.level !== 'easy';
+
+  const rows: DataRow[] = [];
+
+  for (let i = 0; i < rowCount; i++) {
+    const row: DataRow = {};
+
+    for (const col of columns) {
+      row[col.name] = generateCellValue(col, i, context);
+    }
+
+    rows.push(row);
+  }
+
+  // Inject intentional data traps for Middle and Advance levels
+  if (isTrapLevel && rows.length > 20) {
+    injectDataTraps(rows, columns, seedNum);
+  }
+
+  return rows;
+}
+
+function generateCellValue(
+  col: DatasetColumn,
+  rowIndex: number,
+  context: DatasetGenerationContext | CaseStudy,
+): string | number {
+  const colNameLower = col.name.toLowerCase();
+  const industryProfile = context.industry && context.industry !== 'Acak'
+    ? INDUSTRY_PROFILES[context.industry]
+    : undefined;
+  const isIdentifier = /(^|[_\s])(kode|id|sku|no|nomor)([_\s]|$)|^(kode|id|sku|no|nomor)/i.test(col.name);
+  const industryValues = getIndustryColumnValues(col.name, context.industry);
+
+  if (col.type === 'enum' && col.values && col.values.length > 0) {
+    return faker.helpers.arrayElement(col.values);
+  }
+
+  if (industryProfile && industryValues && col.type !== 'date' && col.type !== 'int' && col.type !== 'number' && col.type !== 'currency') {
+    return faker.helpers.arrayElement(industryValues);
+  }
+
+  // Number / Currency / Int
+  if (col.type === 'int' || col.type === 'number' || col.type === 'currency') {
+    let min = 1;
+    let max = 100;
+    let hasValidRange = false;
+    if (col.range && Array.isArray(col.range)) {
+      const rangeMin = Number(col.range[0]);
+      const rangeMax = Number(col.range[1]);
+      if (
+        Number.isSafeInteger(rangeMin) &&
+        Number.isSafeInteger(rangeMax) &&
+        rangeMin <= rangeMax
+      ) {
+        min = rangeMin;
+        max = rangeMax;
+        hasValidRange = true;
+      }
+    }
+    if (!hasValidRange && (col.type === 'currency' || colNameLower.includes('harga') || colNameLower.includes('nominal'))) {
+      min = 25000;
+      max = 2500000;
+    } else if (!hasValidRange && (colNameLower.includes('qty') || colNameLower.includes('jumlah'))) {
+      min = 1;
+      max = 50;
+    }
+
+    const val = faker.number.int({ min, max });
+    if (col.type === 'currency') {
+      return Math.round(val / 1000) * 1000;
+    }
+    return val;
+  }
+
+  // Date
+  if (col.type === 'date') {
+    let fromDate = new Date('2026-01-01');
+    let toDate = new Date('2026-03-31');
+
+    if (col.range && Array.isArray(col.range) && col.range.length === 2) {
+      const rangeStart = new Date(String(col.range[0]));
+      const rangeEnd = new Date(String(col.range[1]));
+      if (
+        Number.isFinite(rangeStart.getTime()) &&
+        Number.isFinite(rangeEnd.getTime()) &&
+        rangeStart <= rangeEnd
+      ) {
+        fromDate = rangeStart;
+        toDate = rangeEnd;
+      }
+    }
+
+    const d = faker.date.between({ from: fromDate, to: toDate });
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // Text heuristics based on column name
+  if (colNameLower.includes('no') || colNameLower.includes('id') || colNameLower.includes('kode') || colNameLower.includes('invoice')) {
+    const prefix = colNameLower.includes('inv') ? 'INV' : colNameLower.includes('po') ? 'PO' : 'TRX';
+    return `${prefix}-${2026}-${String(rowIndex + 1).padStart(4, '0')}`;
+  }
+
+  if (colNameLower.includes('vendor') || colNameLower.includes('supplier') || colNameLower.includes('pemasok') || colNameLower.includes('perusahaan')) {
+    return faker.company.name();
+  }
+
+  if (colNameLower.includes('pelanggan') || colNameLower.includes('customer') || colNameLower.includes('klien') || colNameLower.includes('nasabah')) {
+    return faker.company.name();
+  }
+
+  if (colNameLower.includes('nama') || colNameLower.includes('pegawai') || colNameLower.includes('karyawan') || colNameLower.includes('mekanik')) {
+    return faker.person.fullName();
+  }
+
+  if (!isIdentifier && (colNameLower.includes('barang') || colNameLower.includes('produk') || colNameLower.includes('item'))) {
+    return industryProfile
+      ? faker.helpers.arrayElement(industryProfile.products)
+      : faker.commerce.productName();
+  }
+
+  if (colNameLower.includes('kota') || colNameLower.includes('wilayah') || colNameLower.includes('cabang')) {
+    return faker.helpers.arrayElement(['Jakarta', 'Bandung', 'Surabaya', 'Semarang', 'Medan', 'Makassar']);
+  }
+
+  return faker.lorem.words(2);
+}
+
+/**
+ * Injects deliberate data traps for realistic data-cleaning practice:
+ * 1. Leading/trailing spaces on string columns (e.g. " ATK01 ")
+ * 2. Text dates with single quote / unformatted string
+ * 3. Numbers stored as text (e.g. '15000)
+ * 4. Empty / null cells
+ * 5. Duplicate rows (2-3 duplicates)
+ */
+function injectDataTraps(rows: DataRow[], columns: DatasetColumn[], _seed: number) {
+  const textCols = columns.filter((c) => c.type === 'text' || c.type === 'enum');
+  const numCols = columns.filter((c) => c.type === 'int' || c.type === 'number' || c.type === 'currency');
+  const dateCols = columns.filter((c) => c.type === 'date');
+
+  // 1. Spasi berlebih pada text columns
+  if (textCols.length > 0) {
+    const codeColumn = textCols.find((column) => /(kode|code|sku)/i.test(column.name));
+    const colName = (codeColumn ?? textCols[0]).name;
+    const targets = [5, 12, 28, 45];
+    for (const idx of targets) {
+      if (rows[idx] && rows[idx][colName]) {
+        rows[idx][colName] = `  ${rows[idx][colName]} `;
+      }
+    }
+  }
+
+  // 2. Angka tersimpan sebagai teks
+  if (numCols.length > 0) {
+    const colName = numCols[0].name;
+    const targets = [8, 22, 39];
+    for (const idx of targets) {
+      if (rows[idx] && rows[idx][colName] !== null) {
+        rows[idx][colName] = String(rows[idx][colName]);
+      }
+    }
+  }
+
+  // 3. Tanggal bertipe teks atau variasi separator
+  if (dateCols.length > 0) {
+    const colName = dateCols[0].name;
+    const targets = [7, 19, 31];
+    for (const idx of targets) {
+      if (rows[idx] && rows[idx][colName]) {
+        const dStr = String(rows[idx][colName]);
+        rows[idx][colName] = dStr.replace(/-/g, '/'); // "2026/02/15" text variation
+      }
+    }
+  }
+
+  // 4. Sel kosong (Null/blank)
+  if (numCols.length > 1 && rows.length > 25) {
+    const colName = numCols[1].name;
+    rows[14][colName] = '';
+    rows[27][colName] = '';
+  }
+
+  // 5. Duplikat 2 baris
+  if (rows.length > 30) {
+    rows[20] = { ...rows[10] };
+    rows[35] = { ...rows[15] };
+  }
+}
