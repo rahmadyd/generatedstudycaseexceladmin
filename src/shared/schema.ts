@@ -60,6 +60,63 @@ export const DatasetColumnSchema = z.object({
   type: z.enum(['date', 'text', 'number', 'int', 'currency', 'enum']),
   values: z.array(z.string()).optional(),
   range: z.union([z.tuple([z.number(), z.number()]), z.tuple([z.string(), z.string()])]).optional(),
+}).superRefine((column, context) => {
+  if (column.values && column.type !== 'enum') {
+    context.addIssue({
+      code: 'custom',
+      path: ['values'],
+      message: 'values hanya boleh digunakan pada kolom enum.',
+    });
+  }
+  if (column.type === 'enum' && (!column.values || column.values.length === 0)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['values'],
+      message: 'Kolom enum harus memiliki minimal satu nilai teks.',
+    });
+  }
+  if (!column.range) return;
+
+  if (column.type === 'number' || column.type === 'int' || column.type === 'currency') {
+    const [min, max] = column.range;
+    if (
+      typeof min !== 'number' ||
+      typeof max !== 'number' ||
+      !Number.isSafeInteger(min) ||
+      !Number.isSafeInteger(max) ||
+      min > max
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['range'],
+        message: 'Range numeric harus dua bilangan bulat aman dengan min <= max.',
+      });
+    }
+    return;
+  }
+
+  if (column.type === 'date') {
+    const [start, end] = column.range;
+    const isIsoDate = (value: string | number): value is string => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const date = new Date(`${value}T00:00:00.000Z`);
+      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+    };
+    if (!isIsoDate(start) || !isIsoDate(end) || start > end) {
+      context.addIssue({
+        code: 'custom',
+        path: ['range'],
+        message: 'Range tanggal harus dua tanggal ISO valid dan berurutan.',
+      });
+    }
+    return;
+  }
+
+  context.addIssue({
+    code: 'custom',
+    path: ['range'],
+    message: 'Range hanya boleh digunakan pada kolom tanggal atau numerik.',
+  });
 });
 export type DatasetColumn = z.infer<typeof DatasetColumnSchema>;
 

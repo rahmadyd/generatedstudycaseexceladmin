@@ -69,13 +69,12 @@ async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy>
   const prompt = compileAnswerKeyPrompt(caseStudy);
   const requestId = randomUUID();
   const config = GENERATION_CONFIG[caseStudy.level];
+  let retryGuidance = '';
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const rawResponse = await callGroqChat({
         systemPrompt: 'Generate validated Excel answer keys. Return compact JSON only.',
-        userPrompt: attempt === 0
-          ? prompt
-          : `${prompt}\n\nReturn complete valid JSON only. Shorten every explanation; do not omit quotes or closing braces.`,
+        userPrompt: `${prompt}${retryGuidance}`,
         temperature: 0.3,
         maxTokens: attempt === 0
           ? config.stagedAnswerKeyMaxTokens ?? config.maxTokens
@@ -85,7 +84,15 @@ async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy>
         level: caseStudy.level,
       });
       const parsed = parseAIJson(rawResponse, 'Gagal membaca kunci jawaban bertahap');
-      const answerKey = AnswerKeyItemSchema.array().parse(parsed.answerKey).map((answer) => ({
+      const answerKeyResult = AnswerKeyItemSchema.array().safeParse(parsed.answerKey);
+      if (!answerKeyResult.success) {
+        throw new Error(
+          `Schema kunci jawaban tidak valid: ${answerKeyResult.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; ')}`,
+        );
+      }
+      const answerKey = answerKeyResult.data.map((answer) => ({
         ...answer,
         formula: normalizeExcelFormulaLocale(answer.formula),
       }));
@@ -95,6 +102,9 @@ async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy>
         answerKeyStatus: 'pending',
       };
       const issues = getTaskAnswerAlignmentIssues(candidate);
+      if (answerKey.length !== caseStudy.tasks.length) {
+        issues.push(`harus ada tepat ${caseStudy.tasks.length} jawaban, AI menghasilkan ${answerKey.length}`);
+      }
       if (issues.length > 0) {
         throw new Error(`Kunci jawaban bertahap tidak lolos pemeriksaan: ${issues.join('; ')}`);
       }
@@ -102,8 +112,13 @@ async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy>
     } catch (error) {
       const message = (error as Error).message ?? '';
       const canRetry = error instanceof GroqOutputTruncatedError ||
-        message.includes('Gagal membaca kunci jawaban bertahap');
-      if (attempt === 0 && canRetry) continue;
+        message.includes('Gagal membaca kunci jawaban bertahap') ||
+        message.includes('Schema kunci jawaban tidak valid') ||
+        message.includes('Kunci jawaban bertahap tidak lolos pemeriksaan');
+      if (attempt === 0 && canRetry) {
+        retryGuidance = `\n\nREPAIR THE PREVIOUS ANSWER-KEY ERRORS: ${message}. Return exactly one answer per task in the required JSON shape. Use the supplied dataset column map and do not change the case.`;
+        continue;
+      }
       throw error;
     }
   }
@@ -227,7 +242,7 @@ Generate a new complete case with role=${req.role} and industry=${industry}. Inc
         throw new Error(`Hasil AI tidak selaras dengan pilihan bidang admin/industri: ${alignmentIssues.join('; ')}`);
       }
 
-      retryGuidance = `\n\nREPAIR THE PREVIOUS SCHEMA ERRORS: ${validation.errors.join('; ')}. Return a complete compact JSON object matching the required schema exactly.`;
+      retryGuidance = `\n\nREPAIR THE PREVIOUS SCHEMA ERRORS: ${validation.errors.join('; ')}. Return a complete compact JSON object matching the required schema exactly. Dataset range rules: number/int/currency ranges are two whole JSON numbers [min,max] with min <= max; date ranges are two valid chronological ISO date strings ["YYYY-MM-DD","YYYY-MM-DD"]; never mix types. Omit range for text/enum and omit optional values/range when unused.`;
       throw new Error(`Validasi gagal (attempt ${attempt + 1}): ${validation.errors.join('; ')}`);
     } catch (err) {
       lastError = err;
@@ -243,7 +258,7 @@ Generate a new complete case with role=${req.role} and industry=${industry}. Inc
         (err instanceof GroqApiError && err.status === 429) ||
         msg.includes('429') ||
         msg.includes('401') ||
-        (msg.includes('tidak valid') && !malformedJson) ||
+        msg.includes('AI Error (404)') ||
         msg.includes('tidak ditemukan')
       ) {
         throw err;

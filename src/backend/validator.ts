@@ -39,6 +39,54 @@ function getExcelColumnName(index: number): string {
   return columnName;
 }
 
+function sanitizeDatasetRange(
+  range: unknown,
+  columnType: string,
+): [number, number] | [string, string] | undefined {
+  if (!Array.isArray(range) || range.length !== 2) return undefined;
+
+  if (columnType === 'number' || columnType === 'int' || columnType === 'currency') {
+    const numericValues = range.map((value) => {
+      if (typeof value === 'number') return value;
+      if (typeof value !== 'string' || !/^-?\d+(?:\.\d+)?$/.test(value.trim())) return NaN;
+      return Number(value);
+    });
+    const [min, max] = numericValues;
+    if (
+      Number.isSafeInteger(min) &&
+      Number.isSafeInteger(max) &&
+      min <= max
+    ) {
+      return [min, max];
+    }
+    return undefined;
+  }
+
+  if (columnType === 'date') {
+    const [start, end] = range;
+    const isIsoDate = (value: unknown): value is string => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const date = new Date(`${value}T00:00:00.000Z`);
+      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+    };
+    if (isIsoDate(start) && isIsoDate(end) && start <= end) {
+      return [start, end];
+    }
+  }
+
+  return undefined;
+}
+
+function sanitizeDatasetValues(values: unknown): string[] | undefined {
+  if (!Array.isArray(values)) return undefined;
+  const sanitized = values
+    .filter((value): value is string | number | boolean =>
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean',
+    )
+    .map(String);
+  return sanitized.length > 0 ? sanitized : undefined;
+}
+
 function normalizeNumericLiteral(value: string): string {
   const cleaned = value.replace(/[^\d.,]/g, '');
   const normalized = cleaned
@@ -371,8 +419,8 @@ function preSanitizeRawJson(raw: any): any {
         return {
           name: c.name || 'Kolom',
           type: colType,
-          values: Array.isArray(c.values) ? c.values : undefined,
-          range: Array.isArray(c.range) ? c.range : undefined,
+          values: colType === 'enum' ? sanitizeDatasetValues(c.values) : undefined,
+          range: sanitizeDatasetRange(c.range, colType),
         };
       });
     }

@@ -10,16 +10,17 @@ Context: {{companyName}}; {{theme}}; {{period}}. Industry guidance: {{industryPr
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
 Task count: exactly {{taskCount}} | Seed: {{seed}} | Formula policy: {{levelFormulaPolicy}}
 Keep hints within {{hintMaxChars}} characters and explanations within {{explanationMaxChars}} characters.
-Rules: Indonesian; role/industry-specific; dataset schema is the only source sheet; match every instruction, hint, target, formula, and condition; use only allowed formulas and available columns; conditional aggregates must implement every criterion; formula tasks need one copyable formula; no fixed results for random data; exactly {{taskCount}} tasks. {{answerKeyRule}}
-Use Indonesian Excel separators (semicolons; English function names). Return compact JSON, no markdown or unused fields, with this shape:
-{"title":"string","scenario":"string","tasks":[{"no":1,"instruction":"string","hint":"string","targetResult":"string"}],"dataTraps":["string"],"formulas":{"recommended":["string"],"allowed":["string"],"forbidden":["string"]},"dataset":{"sheetName":"string","rows":150,"columns":[{"name":"string","type":"date|text|number|int|currency|enum","values":["..."],"range":[1,100]}]},"answerKey":[{"task":1,"formula":"=...","explanation":"..."}]}`;
+Rules: Indonesian; role/industry-specific; dataset schema is the only source sheet; match every instruction, hint, target, formula, and condition; every column named in a formula task must be referenced by its formula; use only allowed formulas and available columns; conditional aggregates must implement every criterion; formula tasks need one copyable formula; no fixed results for random data; exactly {{taskCount}} tasks. {{answerKeyRule}}
+Dataset metadata: for number/int/currency, optional range is exactly two whole JSON numbers [min,max] with min <= max; for date, optional range is two valid chronological ISO dates ["YYYY-MM-DD","YYYY-MM-DD"]. Never mix number and string values in range. Omit range for text/enum; use values only for enum as non-empty strings. Omit unused optional fields.
+Use Indonesian Excel separators (semicolons; English function names). Return compact JSON, no markdown or unused fields. The JSON schema below shows the exact range/value shapes.
+{"title":"string","scenario":"string","tasks":[{"no":1,"instruction":"string","hint":"string","targetResult":"string"}],"dataTraps":["string"],"formulas":{"recommended":["string"],"allowed":["string"],"forbidden":["string"]},"dataset":{"sheetName":"string","rows":150,"columns":[{"name":"Tanggal_Transaksi","type":"date","range":["2026-01-01","2026-03-31"]},{"name":"Qty","type":"int","range":[1,100]},{"name":"Status","type":"enum","values":["Selesai","Diproses"]},{"name":"Catatan","type":"text"}]},{{answerKeyShape}}}`;
 const COMPACT_DEFAULT_REGENERATE_TASK_PROMPT = `Regenerate only task {{taskNo}} and its matching answer for this Indonesian Excel case.
 Case: {{title}} | Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}} | Scenario: {{scenario}}
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
 Recommended: {{recommendedFormulas}} | Forbidden: {{forbiddenFormulas}} | Available columns: {{columns}}
 Old instruction: {{oldInstruction}}
 Keep the hint within {{hintMaxChars}} characters and explanation within {{explanationMaxChars}} characters.
-Return compact JSON only. The instruction, hint, target, formula, and explanation must agree. Apply every stated condition; use only available columns and allowed formulas. One source-data sheet only. Formula tasks need one copyable formula; procedural tasks need concise steps. Use semicolons and English function names. Classic references cells/ranges; Modern uses structured references.
+Return compact JSON only. The instruction, hint, target, formula, and explanation must agree. Apply every stated condition; use only available columns and allowed formulas. One source-data sheet only. Formula tasks must reference every dataset column named in their instruction or hint and must not mention unused columns. Formula tasks need one copyable formula; procedural tasks need concise steps. Use semicolons and English function names. Classic references cells/ranges; Modern uses structured references with the actual available headers.
 {"task":{"no":{{taskNo}},"instruction":"string","hint":"string","targetResult":"string"},"answerKey":{"task":{{taskNo}},"formula":"=...","explanation":"string"}}`;
 
 const DEFAULT_GENERATE_PROMPT = `You are an expert curriculum designer and administrative business analyst who designs realistic Excel case studies for administrative roles in Indonesia.
@@ -53,6 +54,7 @@ Parameters:
 ### CRITICAL RULES:
 - The selected administrative role and industry are mandatory. The scenario, tasks, dataset columns, and enum values must all describe work in the selected role at the selected industry. Do not substitute another role or industry. Use the industry-specific vocabulary above in both the scenario and dataset; do not make a generic unrelated retail/sales case unless that is the selected industry.
 - Dataset rows will be generated from the dataset schema. Give every column a clear meaning for this role and industry. For enum columns, provide realistic values for the selected industry (for example crop/product/asset/service names appropriate to the industry), never generic unrelated products. Include enough operational columns to calculate the requested task answers.
+- Dataset range typing is strict: numeric types use exactly two whole JSON numbers [min,max] with min <= max; date uses two real ISO date strings ["YYYY-MM-DD","YYYY-MM-DD"] in chronological order. Never mix number and string endpoints. Omit range for text and enum. Only enum may use values, as a non-empty array of strings. Omit optional fields that do not apply.
 - The standard case schema generates exactly one source-data sheet. Do not invent a master table, lookup sheet, or second source table that is absent from dataset.columns; every task formula must work with the generated source data. The separate KUNCI_JAWABAN sheet in the export is documentation, not a second data table.
 - Output MUST be valid JSON only matching the schema below.
 - Do NOT make fake download links! The dataset schema will be used by our code generator to create the real XLSX/CSV file.
@@ -77,11 +79,11 @@ Parameters:
   - instruction: clear administrative assignment
   - hint: clue on which columns/logic to use
   - targetResult: benchmark/target figure or validation outcome that the user can verify without peeking at the answer key.
-- Every hint must name the same column(s), filter criteria, and calculation as its instruction and answer. For array formulas, identify the criteria range and value range and mention the required legacy array entry when applicable.
+- Every hint must name the same column(s), filter criteria, and calculation as its instruction and answer. Every dataset column named in a formula task's instruction or hint must be used by that task's formula; do not mention unused columns. For array formulas, identify the criteria range and value range and mention the required legacy array entry when applicable.
 - dataset must have:
   - sheetName: string
   - rows: number (100 to 300)
-  - columns: array of { "name": string, "type": "date"|"text"|"number"|"int"|"currency"|"enum", "values"?: string[], "range"?: [number, number] or [string, string] }
+  - columns: array of objects with name and type. Optional values are only for enum and must be non-empty strings. Optional range is [number, number] for number/int/currency or [ISO-date, ISO-date] for date; never mix endpoint types. Omit range for text/enum.
 
 Schema:
 \`\`\`json
@@ -108,7 +110,10 @@ Schema:
     "sheetName": "string",
     "rows": 150,
     "columns": [
-      { "name": "string", "type": "date|text|number|int|currency|enum", "values": ["..."], "range": [1, 100] }
+      { "name": "Tanggal_Transaksi", "type": "date", "range": ["2026-01-01", "2026-03-31"] },
+      { "name": "Qty", "type": "int", "range": [1, 100] },
+      { "name": "Status", "type": "enum", "values": ["Selesai", "Diproses"] },
+      { "name": "Catatan", "type": "text" }
     ]
   },
   "answerKey": [
@@ -267,14 +272,22 @@ export function compileAnswerKeyPrompt(caseStudy: CaseStudy): string {
     hint,
     targetResult,
   }));
-  const columnNames = caseStudy.dataset.columns.map((column) => column.name);
+  const columnNames = caseStudy.dataset.columns.map((column, index) => {
+    let columnNumber = index;
+    let columnLetter = '';
+    do {
+      columnLetter = String.fromCharCode(65 + (columnNumber % 26)) + columnLetter;
+      columnNumber = Math.floor(columnNumber / 26) - 1;
+    } while (columnNumber >= 0);
+    return `${columnLetter}=${column.name}`;
+  });
   return `Generate answer keys only for this validated Indonesian Excel case. Return compact JSON only.
 Level: ${caseStudy.level}; Excel: ${caseStudy.excelVersion}; reference style: ${caseStudy.formulaStyle ?? 'classic'}; structured-reference @: ${caseStudy.structuredReferenceAt !== false}.
 Scenario: ${caseStudy.scenario}
 Tasks: ${JSON.stringify(taskContext)}
-Available source sheet: ${caseStudy.dataset.sheetName}; columns: ${JSON.stringify(columnNames)}
+Available source sheet: ${caseStudy.dataset.sheetName}; dataset columns in order: ${JSON.stringify(columnNames)}
 Recommended formulas: ${JSON.stringify(caseStudy.formulas.recommended)}; forbidden formulas: ${JSON.stringify(caseStudy.formulas.forbidden)}.
-Return exactly one answer per task in task order. Each answer must satisfy every condition in its instruction, use only available columns and allowed formulas, and match the requested target. Do not invent extra sheets, lookup tables, or fixed dataset results. Use one copyable formula for formula tasks and concise procedural steps for non-formula tasks. Use English function names and semicolons between arguments. Keep each explanation within ${GENERATION_CONFIG[caseStudy.level].explanationMaxChars} characters.
+Return exactly one answer per task in task order. Each formula must satisfy every condition in its task, reference every dataset column named by that task, use only available columns and allowed formulas, and match the requested target. Do not invent extra sheets, lookup tables, or fixed dataset results. Classic formulas must use the column letters above; Modern formulas must use actual table headers. Use one copyable formula for formula tasks and concise procedural steps for non-formula tasks. Use English function names and semicolons between arguments. Keep each explanation within ${GENERATION_CONFIG[caseStudy.level].explanationMaxChars} characters.
 {"answerKey":[{"task":1,"formula":"=...","explanation":"..."}]}`;
 }
 

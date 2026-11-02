@@ -71,13 +71,24 @@ function generateCellValue(col: DatasetColumn, rowIndex: number, caseStudy: Case
   if (col.type === 'int' || col.type === 'number' || col.type === 'currency') {
     let min = 1;
     let max = 100;
+    let hasValidRange = false;
     if (col.range && Array.isArray(col.range)) {
-      min = Number(col.range[0]) || min;
-      max = Number(col.range[1]) || max;
-    } else if (col.type === 'currency' || colNameLower.includes('harga') || colNameLower.includes('nominal')) {
+      const rangeMin = Number(col.range[0]);
+      const rangeMax = Number(col.range[1]);
+      if (
+        Number.isSafeInteger(rangeMin) &&
+        Number.isSafeInteger(rangeMax) &&
+        rangeMin <= rangeMax
+      ) {
+        min = rangeMin;
+        max = rangeMax;
+        hasValidRange = true;
+      }
+    }
+    if (!hasValidRange && (col.type === 'currency' || colNameLower.includes('harga') || colNameLower.includes('nominal'))) {
       min = 25000;
       max = 2500000;
-    } else if (colNameLower.includes('qty') || colNameLower.includes('jumlah')) {
+    } else if (!hasValidRange && (colNameLower.includes('qty') || colNameLower.includes('jumlah'))) {
       min = 1;
       max = 50;
     }
@@ -95,8 +106,16 @@ function generateCellValue(col: DatasetColumn, rowIndex: number, caseStudy: Case
     let toDate = new Date('2026-03-31');
 
     if (col.range && Array.isArray(col.range) && col.range.length === 2) {
-      fromDate = new Date(String(col.range[0]));
-      toDate = new Date(String(col.range[1]));
+      const rangeStart = new Date(String(col.range[0]));
+      const rangeEnd = new Date(String(col.range[1]));
+      if (
+        Number.isFinite(rangeStart.getTime()) &&
+        Number.isFinite(rangeEnd.getTime()) &&
+        rangeStart <= rangeEnd
+      ) {
+        fromDate = rangeStart;
+        toDate = rangeEnd;
+      }
     }
 
     const d = faker.date.between({ from: fromDate, to: toDate });

@@ -12,7 +12,7 @@ Keep the hint within {{hintMaxChars}} characters and the explanation within {{ex
 RULES
 - Return compact JSON only with keys `task` and `answerKey`; both use task number {{taskNo}}.
 - Write the instruction, hint, target, formula, and explanation as one consistent operation.
-- Apply every stated condition in the formula and use only available columns and allowed functions. The standard case has one source-data sheet; do not invent lookup tables.
+- Apply every stated condition in the formula and use only available columns and allowed functions. Every dataset column named in the instruction or hint must be used by the formula; do not mention unused columns. The standard case has one source-data sheet; do not invent lookup tables.
 - Formula tasks need one copyable formula. Procedural tasks need concise steps. Use semicolons between Excel function arguments and English function names.
 - Keep the hint concise and the explanation educational but brief. Do not invent fixed results for random rows.
 - Classic formulas use cell/range references; Modern formulas use structured references with available headers.
