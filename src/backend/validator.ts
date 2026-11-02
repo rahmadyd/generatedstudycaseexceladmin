@@ -9,6 +9,7 @@ export interface ValidationResult {
   valid: boolean;
   data?: CaseStudy;
   errors: string[];
+  warnings: string[];
 }
 
 function containsAny(text: string, terms: string[]): boolean {
@@ -165,8 +166,9 @@ export function getCaseStudyAlignmentIssues(
 export function getTaskAnswerAlignmentIssues(
   caseStudy: CaseStudy,
   taskNumbers?: number[],
-): string[] {
-  const issues: string[] = [];
+): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
   const tasks = taskNumbers
     ? caseStudy.tasks.filter((task) => taskNumbers.includes(task.no))
     : caseStudy.tasks;
@@ -189,80 +191,79 @@ export function getTaskAnswerAlignmentIssues(
   for (const task of tasks) {
     const taskAnswers = answers.filter((answer) => answer.task === task.no);
     if (taskAnswers.length !== 1) {
-      issues.push(`tugas ${task.no} harus memiliki tepat satu kunci jawaban yang cocok`);
+      errors.push(`tugas ${task.no} harus memiliki tepat satu kunci jawaban yang cocok`);
       continue;
     }
 
     const answer = taskAnswers[0];
     if (answer.mode !== task.answerMode) {
-      issues.push(`mode kunci jawaban tugas ${task.no} tidak sesuai dengan mode tugas`);
+      warnings.push(`mode kunci jawaban tugas ${task.no} tidak sesuai dengan mode tugas`);
     }
     if (rubricTaskKinds.has(task.taskKind) && task.answerMode !== 'rubric') {
-      issues.push(`jenis tugas ${task.taskKind} harus menggunakan mode rubric`);
+      warnings.push(`jenis tugas ${task.taskKind} sebaiknya menggunakan mode rubric`);
     }
     if (!LEVEL_RULES[caseStudy.level].taskKinds.includes(task.taskKind)) {
-      issues.push(`jenis tugas ${task.taskKind} tidak diizinkan pada level ${caseStudy.level}`);
+      warnings.push(`jenis tugas ${task.taskKind} mungkin tidak diizinkan pada level ${caseStudy.level}`);
     }
 
-    // Validasi columnsUsed
+    // Validasi columnsUsed - FATAL jika kolom tidak ada di dataset
     if (task.columnsUsed.length === 0) {
-      issues.push(`tugas ${task.no} harus menyebutkan columnsUsed`);
+      warnings.push(`tugas ${task.no} sebaiknya menyebutkan columnsUsed`);
     }
     const missingColumns = [...task.columnsUsed, ...answer.columnsUsed]
       .filter((column) => !availableColumns.has(column));
     for (const column of new Set(missingColumns)) {
-      issues.push(`tugas ${task.no} menggunakan kolom yang tidak ada: ${column}`);
+      errors.push(`tugas ${task.no} menggunakan kolom yang tidak ada: ${column}`);
     }
     if (task.dateColumn && !availableColumns.has(task.dateColumn)) {
-      issues.push(`tugas ${task.no} menggunakan dateColumn yang tidak ada: ${task.dateColumn}`);
+      errors.push(`tugas ${task.no} menggunakan dateColumn yang tidak ada: ${task.dateColumn}`);
     }
 
     // Validasi mode rubric
     if (answer.mode === 'rubric') {
       if (answer.rubricChecklist.length === 0) {
-        issues.push(`tugas ${task.no} mode rubric harus memiliki checklist`);
+        warnings.push(`tugas ${task.no} mode rubric sebaiknya memiliki checklist`);
       }
       if (answer.formula?.trim() || task.formula?.trim()) {
-        issues.push(`tugas ${task.no} mode rubric tidak boleh memiliki formula`);
+        warnings.push(`tugas ${task.no} mode rubric sebaiknya tidak memiliki formula`);
       }
       continue;
     }
 
-    // Validasi mode computed
+    // Validasi mode computed - FATAL jika formula kosong
     const formula = answer.formula?.trim();
     if (!formula) {
-      issues.push(`tugas ${task.no} mode computed harus memiliki formula`);
+      errors.push(`tugas ${task.no} mode computed harus memiliki formula`);
       continue;
     }
 
-    // Validasi fungsi terlarang dengan regex yang benar
+    // Validasi fungsi terlarang dengan regex yang benar - FATAL
     const functionNames = getFormulaFunctionNames(formula);
     const forbidden = functionNames.find((name) => forbiddenFunctions.has(name));
     if (forbidden) {
-      issues.push(`ERROR FATAL: Kunci tugas ${task.no} memakai fungsi terlarang "${forbidden}" pada level ${caseStudy.level}. Silakan ganti dengan fungsi yang diizinkan: ${Array.from(allowedFunctions).join(', ')}.`);
+      errors.push(`ERROR FATAL: Kunci tugas ${task.no} memakai fungsi terlarang "${forbidden}" pada level ${caseStudy.level}. Silakan ganti dengan fungsi yang diizinkan: ${Array.from(allowedFunctions).join(', ')}.`);
       continue;
     }
 
     const unsupported = functionNames.find((name) => !allowedFunctions.has(name));
     if (unsupported) {
-      issues.push(`kunci tugas ${task.no} memakai fungsi ${unsupported} yang tidak diizinkan pada level ${caseStudy.level}`);
-      continue;
+      warnings.push(`kunci tugas ${task.no} memakai fungsi ${unsupported} yang mungkin tidak diizinkan pada level ${caseStudy.level}`);
     }
 
-    // Validasi eksekusi formula
+    // Validasi eksekusi formula - FATAL jika gagal eksekusi
     try {
       const expected = validateTaskCalculation(task, formula, caseStudy, datasetRows);
       if (answer.expectedValue === undefined) {
-        issues.push(`tugas ${task.no} belum memiliki expectedValue hasil perhitungan`);
+        warnings.push(`tugas ${task.no} belum memiliki expectedValue hasil perhitungan`);
       } else if (answer.expectedValue !== expected) {
-        issues.push(`expectedValue tugas ${task.no} tidak sesuai hasil eksekusi formula`);
+        warnings.push(`expectedValue tugas ${task.no} tidak sesuai hasil eksekusi formula`);
       }
     } catch (error) {
-      issues.push(`formula tugas ${task.no} gagal dieksekusi: ${(error as Error).message}`);
+      errors.push(`formula tugas ${task.no} gagal dieksekusi: ${(error as Error).message}`);
     }
   }
 
-  return issues;
+  return { errors, warnings };
 }
 
 
@@ -275,18 +276,21 @@ export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVers
       return {
         valid: false,
         errors: [`Respons AI tidak lengkap; field wajib tidak ada: ${missingFields.join(', ')}`],
+        warnings: [],
       };
     }
     if (!Array.isArray(raw.tasks) || !Array.isArray(raw.answerKey)) {
       return {
         valid: false,
         errors: ['Respons AI tidak valid; tasks dan answerKey harus berupa array.'],
+        warnings: [],
       };
     }
     if (typeof raw.formulas !== 'object' || raw.formulas === null || Array.isArray(raw.formulas)) {
       return {
         valid: false,
         errors: ['Respons AI tidak valid; formulas harus berupa object.'],
+        warnings: [],
       };
     }
     const rawFormulas = raw.formulas as Record<string, unknown>;
@@ -294,6 +298,7 @@ export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVers
       return {
         valid: false,
         errors: ['Respons AI tidak lengkap; formulas harus memiliki array recommended, allowed, dan forbidden.'],
+        warnings: [],
       };
     }
     if (
@@ -306,6 +311,7 @@ export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVers
       return {
         valid: false,
         errors: ['Respons AI tidak lengkap; dataset harus memiliki sheetName, rows, dan columns.'],
+        warnings: [],
       };
     }
   }
@@ -318,6 +324,7 @@ export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVers
     return {
       valid: false,
       errors: [`Zod Validation Error: ${formatted}`],
+      warnings: [],
     };
   }
 
@@ -348,5 +355,6 @@ export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVers
     valid: true,
     data: caseStudy,
     errors: [],
+    warnings: [],
   };
 }

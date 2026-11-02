@@ -348,29 +348,7 @@ export function validateTaskCalculation(
   rows: DataRow[],
 ): CellValue {
   if (!formula.trim()) throw new Error(`Tugas ${task.no}: formula kosong.`);
-  const availableColumns = new Set(caseStudy.dataset.columns.map((column) => column.name));
-  if (task.columnsUsed.length === 0) {
-    throw new Error(`Tugas ${task.no}: columnsUsed wajib menyebut kolom yang dipakai.`);
-  }
-  const missingColumns = task.columnsUsed.filter((column) => !availableColumns.has(column));
-  if (missingColumns.length > 0) {
-    throw new Error(`Tugas ${task.no}: kolom tidak ada di dataset: ${missingColumns.join(', ')}.`);
-  }
-  if (task.dateColumn && !availableColumns.has(task.dateColumn)) {
-    throw new Error(`Tugas ${task.no}: dateColumn ${task.dateColumn} tidak ada di dataset.`);
-  }
-  const formulaFunctions = getFormulaFunctionNames(formula);
-  if (caseStudy.excelVersion === '2016/2019') {
-    const unsupportedVersionFunction = formulaFunctions.find((name) =>
-      M365_ONLY_FORMULAS.includes(name),
-    );
-    if (unsupportedVersionFunction) {
-      throw new Error(
-        `Tugas ${task.no}: fungsi ${unsupportedVersionFunction} memerlukan Microsoft 365.`,
-      );
-    }
-  }
-  // Validasi fungsi terlarang dan allowed functions sudah dilakukan di validator.ts
+  // Validasi columnsUsed dan kolom yang tidak ada sudah dilakukan di validator.ts
   // Di sini hanya validasi eksekusi formula
   return evaluateExcelFormula(formula, caseStudy, rows);
 }

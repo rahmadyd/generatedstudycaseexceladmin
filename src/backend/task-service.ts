@@ -153,7 +153,14 @@ async function completeStagedContent(initialCase: CaseStudy): Promise<CaseStudy>
       forbidden: [...LEVEL_RULES[caseStudy.level].forbiddenFunctions],
     };
     const issues = getTaskAnswerAlignmentIssues(caseStudy);
-    if (issues.length > 0) throw new Error(issues.join('; '));
+    if (issues.errors.length > 0) throw new Error(issues.errors.join('; '));
+    // Log warnings tapi tidak jadikan error fatal
+    if (issues.warnings.length > 0) {
+      console.warn('[completeStagedContent] warnings', JSON.stringify({
+        seed: caseStudy.seed,
+        warnings: issues.warnings,
+      }));
+    }
     caseStudy.answerKeyStatus = 'available';
   } catch (error) {
     console.error('Computed answer-key completion failed:', JSON.stringify({
@@ -325,9 +332,17 @@ export async function generateCaseStudyService(
       }
       const alignmentIssues = getCaseStudyAlignmentIssues(validation.data, req.role, industry);
       const answerIssues = getTaskAnswerAlignmentIssues(validation.data);
-      const issues = [...alignmentIssues, ...answerIssues];
+      const issues = [...alignmentIssues, ...answerIssues.errors];
       if (issues.length > 0) {
         throw new Error(`Validasi hasil generate gagal: ${issues.join('; ')}`);
+      }
+      // Log warnings tapi tidak jadikan error fatal
+      if (answerIssues.warnings.length > 0) {
+        console.warn('[generate] warnings', JSON.stringify({
+          requestId,
+          clientRequestId,
+          warnings: answerIssues.warnings,
+        }));
       }
       console.log('[generate] completed', JSON.stringify({
         requestId,
@@ -353,163 +368,10 @@ export async function generateCaseStudyService(
       const providerError = err instanceof GroqApiError;
       const retryableProviderError = providerError && (err.status === 400 || err.status >= 500);
       if (providerError && !retryableProviderError) throw err;
-      if (attempt === 1) {
-        throw new Error(`Gagal generate studi kasus: ${msg || 'Validasi hasil AI gagal.'}`);
-      }
-      retryGuidance = `\n\nPerbaiki output sebelumnya karena: ${msg}. Keluarkan satu JSON ringkas valid sesuai aturan level. Gunakan taskKind, answerMode, columnsUsed, formula atau rubricChecklist yang diwajibkan. Easy/Middle harus tasks: []. Pastikan dataset mendukung level dan tema yang diminta.`;
-    }
-  }
-
-      const parsed = parseAIJson(rawResponse, 'Gagal parse JSON dari AI');
-      const datasetResult = DatasetSchema.safeParse(parsed.dataset);
-      if (!datasetResult.success) {
-        throw new Error(`Schema dataset tidak valid: ${formatZodIssues(datasetResult.error.issues)}`);
-      }
-
-      const dataset = ensureTemplateDataset({
-        ...datasetResult.data,
-        rows: Math.max(50, Math.min(datasetResult.data.rows, 500)),
-      }, req.level, req.role, industry);
-      const rows = generateDatasetRows({ seed, level: req.level, industry, dataset });
-      const formulas = {
-        recommended: [...LEVEL_RULES[req.level].allowedFunctions],
-        allowed: [...LEVEL_RULES[req.level].allowedFunctions],
-        forbidden: [...LEVEL_RULES[req.level].forbiddenFunctions],
-      };
-      const metadata = {
-        id: `case-${seed}`,
-        seed,
-        generationTheme,
-        createdAt: new Date().toISOString(),
-        title: parsed.title,
-        level: req.level,
-        role: req.role,
-        excelVersion: req.excelVersion,
-        formulaStyle: req.formulaStyle ?? 'classic',
-        structuredReferenceAt: req.structuredReferenceAt ?? true,
-        industry,
-        taskCountMode: req.taskCountMode ?? 'auto',
-        taskCount,
-        scenario: parsed.scenario,
-        dataTraps: parsed.dataTraps,
-        formulas,
-        dataset,
-      };
-
-      let tasks: Task[];
-      let answerKey: CaseStudy['answerKey'];
-      if (req.level === 'easy' || req.level === 'middle') {
-        const generated = buildDeterministicTasks({
-          dataset,
-          level: req.level,
-          role: req.role,
-          excelVersion: req.excelVersion,
-        }, rows, taskCount);
-        tasks = generated.tasks;
-        answerKey = generated.answerKey;
-      } else {
-        if (!Array.isArray(parsed.tasks) || parsed.tasks.length !== taskCount) {
-          throw new Error(`Advance harus memiliki tepat ${taskCount} tugas.`);
-        }
-        const taskInput = parsed.tasks as Record<string, unknown>[];
-        const missingMetadata = taskInput.flatMap((task, index) => {
-          const missing = ['taskKind', 'answerMode', 'columnsUsed']
-            .filter((field) => !(field in task))
-            .map((field) => `tugas ${index + 1}: ${field} wajib diisi`);
-          return missing;
-        });
-        if (missingMetadata.length > 0) throw new Error(missingMetadata.join('; '));
-        const taskResult = TaskSchema.array().safeParse(taskInput);
-        if (!taskResult.success) {
-          throw new Error(`Schema tugas tidak valid: ${formatZodIssues(taskResult.error.issues)}`);
-        }
-        tasks = taskResult.data.map((task, index) => ({ ...task, no: index + 1 }));
-        const availableTaskKinds = new Set(LEVEL_RULES.advance.taskKinds);
-        const availableColumns = new Set(dataset.columns.map((column) => column.name));
-        answerKey = tasks.map((task) => {
-          if (!availableTaskKinds.has(task.taskKind)) {
-            throw new Error(`Tugas ${task.no}: jenis ${task.taskKind} tidak diizinkan pada level Advance.`);
-          }
-          if (task.columnsUsed.length === 0) {
-            throw new Error(`Tugas ${task.no}: columnsUsed wajib menyebut kolom dataset yang digunakan.`);
-          }
-          const missingColumns = task.columnsUsed.filter((column) => !availableColumns.has(column));
-          if (missingColumns.length > 0) {
-            throw new Error(`Tugas ${task.no}: kolom tidak ada di dataset: ${missingColumns.join(', ')}.`);
-          }
-          if (task.dateColumn && !availableColumns.has(task.dateColumn)) {
-            throw new Error(`Tugas ${task.no}: dateColumn ${task.dateColumn} tidak ada di dataset.`);
-          }
-          if (task.answerMode === 'rubric') {
-            if (task.rubricChecklist.length === 0) {
-              throw new Error(`Tugas ${task.no}: rubricChecklist wajib diisi untuk mode rubric.`);
-            }
-            return {
-              task: task.no,
-              mode: 'rubric' as const,
-              columnsUsed: task.columnsUsed,
-              rubricChecklist: task.rubricChecklist,
-              explanation: task.targetResult,
-            };
-          }
-          const formula = normalizeAnswerKeyFormula(task.formula);
-          const expectedValue = validateTaskCalculation(
-            task,
-            formula,
-            { dataset, level: req.level, excelVersion: req.excelVersion },
-            rows,
-          );
-          return {
-            task: task.no,
-            mode: 'computed' as const,
-            formula,
-            columnsUsed: task.columnsUsed,
-            expectedValue,
-            explanation: task.targetResult,
-            rubricChecklist: [],
-          };
-        });
-      }
-
-      const validation = validateAndSanitizeCaseStudy({
-        ...metadata,
-        tasks,
-        answerKey,
-        answerKeyStatus: 'available',
-      }, req.excelVersion);
-      if (!validation.valid || !validation.data) {
-        throw new Error(validation.errors.join('; '));
-      }
-      const alignmentIssues = getCaseStudyAlignmentIssues(validation.data, req.role, industry);
-      const answerIssues = getTaskAnswerAlignmentIssues(validation.data);
-      const issues = [...alignmentIssues, ...answerIssues];
-      if (issues.length > 0) {
-        throw new Error(`Validasi hasil generate gagal: ${issues.join('; ')}`);
-      }
-      console.log('[generate] completed', JSON.stringify({
-        requestId,
-        clientRequestId,
-        seed,
-        generationTheme,
-        title: validation.data.title,
-        taskCount: validation.data.tasks.length,
-        groqCalls: attempt + 1,
-      }));
-      return validation.data;
-    } catch (err) {
-      const msg = (err as Error).message || '';
-      console.warn('[generate] attempt failed', JSON.stringify({
-        requestId,
-        clientRequestId,
-        attempt: attempt + 1,
-        message: msg,
-      }));
-      if (err instanceof GroqApiError && err.status === 429) {
+      // Hentikan retry untuk error validasi semantik (bukan error API)
+      if (msg.includes('Validasi hasil generate gagal') || msg.includes('ERROR FATAL')) {
         throw err;
       }
-      const providerError = err instanceof GroqApiError;
-      const retryableProviderError = providerError && (err.status === 400 || err.status >= 500);
-      if (providerError && !retryableProviderError) throw err;
       if (attempt === 1) {
         throw new Error(`Gagal generate studi kasus: ${msg || 'Validasi hasil AI gagal.'}`);
       }
@@ -572,8 +434,15 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
       answerKeyStatus: 'available',
     };
     const issues = getTaskAnswerAlignmentIssues(regeneratedCase, [taskNo]);
-    if (issues.length > 0) {
-      throw new Error(`Tugas deterministik baru gagal validasi: ${issues.join('; ')}`);
+    if (issues.errors.length > 0) {
+      throw new Error(`Tugas deterministik baru gagal validasi: ${issues.errors.join('; ')}`);
+    }
+    // Log warnings tapi tidak jadikan error fatal
+    if (issues.warnings.length > 0) {
+      console.warn('[regenerateTask] warnings', JSON.stringify({
+        taskNo,
+        warnings: issues.warnings,
+      }));
     }
     return regeneratedCase;
   }
@@ -688,8 +557,15 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     answerKeyStatus: 'available',
   };
   const alignmentIssues = getTaskAnswerAlignmentIssues(regeneratedCase, [taskNo]);
-  if (alignmentIssues.length > 0) {
-    throw new Error(`Tugas baru tidak selaras dengan kunci jawaban: ${alignmentIssues.join('; ')}`);
+  if (alignmentIssues.errors.length > 0) {
+    throw new Error(`Tugas baru tidak selaras dengan kunci jawaban: ${alignmentIssues.errors.join('; ')}`);
+  }
+  // Log warnings tapi tidak jadikan error fatal
+  if (alignmentIssues.warnings.length > 0) {
+    console.warn('[regenerateTask] warnings', JSON.stringify({
+      taskNo,
+      warnings: alignmentIssues.warnings,
+    }));
   }
 
   return regeneratedCase;
