@@ -371,7 +371,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
                 </select>
                 <p className="mt-1.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
                   Jumlah tugas mengikuti standar tes admin (minimal 20 soal). Easy &amp; Middle dibuat lokal tanpa
-                  token tambahan; Advance dibuat AI per batch agar tidak terpotong.
+                  token tambahan; Advance memakai AI untuk soal bergaya lanjutan, sisanya dibuat lokal.
                 </p>
               </div>
 

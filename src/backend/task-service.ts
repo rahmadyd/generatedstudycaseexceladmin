@@ -237,9 +237,9 @@ function formatDatasetColumnForPrompt(column: DatasetColumn): string {
 }
 
 /**
- * Tugas level Advance ditulis AI. Supaya tidak terpotong (finish_reason "length")
- * saat jumlah tugas besar, tugas dipecah menjadi beberapa batch permintaan kecil
- * lalu digabung dan dinomori ulang secara berurutan.
+ * Menulis tugas bergaya lanjutan lewat AI. Supaya tidak terpotong (finish_reason
+ * "length"), tugas dipecah menjadi batch kecil lalu digabung dan dinomori ulang.
+ * Pemanggil (level Advance) hanya meminta satu batch; sisanya diisi template lokal.
  */
 async function generateAdvanceTasks(params: {
   requestId: string;
@@ -436,6 +436,13 @@ export async function generateCaseStudyService(
         tasks = generated.tasks;
         answerKey = generated.answerKey;
       } else {
+        // Advance memakai AI hanya untuk satu batch tugas bergaya lanjutan (pivot table,
+        // conditional formatting, dst.), sisanya diisi template lokal. Ini menjaga jumlah
+        // tugas tetap memenuhi standar tes admin tanpa melewati kuota token per menit AI.
+        const aiTaskCount = Math.max(
+          1,
+          Math.min(GENERATION_CONFIG[req.level].taskBatchSize ?? taskCount, taskCount),
+        );
         tasks = await generateAdvanceTasks({
           requestId,
           title: parsed.title,
@@ -448,7 +455,7 @@ export async function generateCaseStudyService(
           structuredReferenceAt: metadata.structuredReferenceAt,
           columns: canonicalDataset.columns,
           rows: canonicalDataset.rows,
-          taskCount,
+          taskCount: aiTaskCount,
         });
         const availableTaskKinds = new Set(LEVEL_RULES.advance.taskKinds);
         const availableColumns = new Set(canonicalDataset.columns.map((column) => column.name));
@@ -495,6 +502,32 @@ export async function generateCaseStudyService(
             rubricChecklist: [],
           };
         });
+
+        // Lengkapi sisa slot dengan template lokal deterministic (tanpa token AI),
+        // melewati instruksi yang sudah ditulis AI agar tidak ada tugas kembar.
+        const localGenerated = buildDeterministicTasks({
+          dataset: canonicalDataset,
+          level: req.level,
+          role: req.role,
+          excelVersion: req.excelVersion,
+        }, rows, taskCount);
+        const usedInstructions = new Set(
+          tasks.map((task) => task.instruction.trim().toLocaleLowerCase('id')),
+        );
+        for (const [index, localTask] of localGenerated.tasks.entries()) {
+          if (tasks.length >= taskCount) break;
+          const instructionKey = localTask.instruction.trim().toLocaleLowerCase('id');
+          if (!instructionKey || usedInstructions.has(instructionKey)) continue;
+          usedInstructions.add(instructionKey);
+          const localNo = tasks.length + 1;
+          tasks.push({ ...localTask, no: localNo });
+          answerKey.push({ ...localGenerated.answerKey[index], task: localNo });
+        }
+        if (tasks.length < taskCount) {
+          throw new Error(
+            `Hanya ${tasks.length} dari ${taskCount} tugas Advance yang berhasil dibuat.`,
+          );
+        }
       }
 
       const validation = validateAndSanitizeCaseStudy({

@@ -7,10 +7,11 @@ export interface GenerationLevelConfig {
   stagedCaseMaxTokens?: number;
   stagedAnswerKeyMaxTokens?: number;
   /**
-   * Jumlah tugas per permintaan AI. Level Advanced menulis tugasnya lewat AI,
-   * jadi tugas dipecah menjadi beberapa batch agar output tidak terpotong
-   * (finish_reason "length"). Easy & Middle tidak memakai ini karena tugasnya
-   * dibangun deterministik di server.
+   * Jumlah tugas per permintaan AI. Level Advanced memakai AI hanya untuk satu
+   * batch tugas bergaya lanjutan; sisanya diisi template lokal deterministik.
+   * Batch dijaga kecil agar output tidak terpotong (finish_reason "length") dan
+   * total token per generate tetap di bawah kuota token per menit penyedia AI.
+   * Easy & Middle tidak memakai ini karena seluruh tugasnya dibangun lokal.
    */
   taskBatchSize?: number;
   taskBatchMaxTokens?: number;

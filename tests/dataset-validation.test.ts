@@ -258,13 +258,15 @@ describe('determinisme seed', () => {
 });
 
 describe('tugas deterministik memenuhi standar tes admin', () => {
-  it(`menghasilkan tepat ${TARGET_TASK_COUNT} tugas unik untuk Easy dan Middle`, () => {
+  it(`menyediakan tepat ${TARGET_TASK_COUNT} tugas unik untuk semua level`, () => {
     const failures: string[] = [];
     const roles = ['Penjualan', 'Staf Gudang'];
 
     for (const [variantIndex, variant] of VARIANTS.entries()) {
       const industry = INDUSTRIES[variantIndex % INDUSTRIES.length];
-      for (const level of ['easy', 'middle'] as Level[]) {
+      // Advance memakai template lokal untuk mengisi slot di luar batch AI,
+      // jadi pasokan tugas lokalnya wajib memenuhi target jumlah tugas.
+      for (const level of ['easy', 'middle', 'advance'] as Level[]) {
         for (const role of roles) {
           const label = `${variant.name}/${level}/${role}`;
           try {
