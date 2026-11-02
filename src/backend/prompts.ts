@@ -1,16 +1,17 @@
 import fs from 'fs';
 import path from 'path';
 import { CaseStudy, GenerateRequest, Industry, Level } from '../shared/schema';
-import { ADMIN_ROLES, getRecommendedTaskCount, INDUSTRY_PROFILES, LEVEL_CONFIG, M365_ONLY_FORMULAS, ROLE_PROFILES, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
+import { ADMIN_ROLES, getRecommendedTaskCount, INDUSTRY_PROFILES, LEVEL_CONFIG, M365_ONLY_FORMULAS, ROLE_GENERATION_THEMES, ROLE_PROFILES, SAMPLE_COMPANIES, SAMPLE_INDUSTRIES, SAMPLE_PERIODS, SAMPLE_THEMES } from '../shared/constants';
 import { GENERATION_CONFIG } from '../shared/generation-config';
 
 const COMPACT_DEFAULT_GENERATE_PROMPT = `You design practical Excel case studies for Indonesian administrative work. Return compact JSON only.
 Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}}
 Context: {{companyName}}; {{theme}}; {{period}}. Industry guidance: {{industryProfile}}
+Recently used themes: {{recentThemes}}. Do not repeat these themes; use the new selected angle in the scenario and tasks.
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
 Task count: exactly {{taskCount}} | Seed: {{seed}} | Formula policy: {{levelFormulaPolicy}}
 Keep hints within {{hintMaxChars}} characters and explanations within {{explanationMaxChars}} characters.
-Rules: Indonesian; title and every task must match the selected admin role (do not substitute sales for inventory or another role); generic words like barang/data/transaksi alone do not prove role alignment; role-specific task and dataset fields plus industry-specific product/service/category must reflect the selections; match every instruction, hint, target, formula, and condition; every column named in a formula task must be referenced by its formula; date/period aggregates must state an exact window and apply >= start and <= end to the date column; use only allowed formulas and available columns; conditional aggregates must implement every criterion; formula tasks need one copyable formula; no fixed results for random data; exactly {{taskCount}} tasks. {{answerKeyRule}}
+Rules: Return one valid JSON object only; Indonesian; title and every task must match the selected admin role (do not substitute sales for inventory or another role); generic words like barang/data/transaksi alone do not prove role alignment; role-specific task and dataset fields plus industry-specific product/service/category must reflect the selections; match every instruction, hint, target, formula, and condition; every column named in a formula task must be referenced by its formula; date/period aggregates must state an exact window and apply >= start and <= end to the date column; use only allowed formulas and available columns; conditional aggregates must implement every criterion; formula tasks need one copyable formula; no fixed results for random data; exactly {{taskCount}} tasks. {{answerKeyRule}}
 Dataset metadata: for number/int/currency, optional range is exactly two whole JSON numbers [min,max] with min <= max; for date, optional range is two valid chronological ISO dates ["YYYY-MM-DD","YYYY-MM-DD"]. Never mix number and string values in range. Omit range for text/enum; use values only for enum as non-empty strings. Omit unused optional fields.
 Use Indonesian Excel separators (semicolons; English function names). If SUMIFS/AVERAGEIFS/COUNTIFS are forbidden, use allowed array formulas with IF and all criteria, including both date bounds; explain Ctrl+Shift+Enter for Excel 2016/2019. Use the supplied industry products/categories as realistic dataset values and choose headers that describe the selected industry's actual operations and the selected role. Return compact JSON, no markdown or unused fields. The JSON schema below shows the exact range/value shapes.
 {"title":"string","scenario":"string","tasks":[{"no":1,"instruction":"string","hint":"string","targetResult":"string"}],"dataTraps":["string"],"formulas":{"recommended":["string"],"allowed":["string"],"forbidden":["string"]},"dataset":{"sheetName":"string","rows":150,"columns":[{"name":"Tanggal_Transaksi","type":"date","range":["2026-01-01","2026-03-31"]},{"name":"Qty","type":"int","range":[1,100]},{"name":"Status","type":"enum","values":["Selesai","Diproses"]},{"name":"Catatan","type":"text"}]},{{answerKeyShape}}}`;
@@ -176,10 +177,7 @@ Schema:
 \`\`\`
 Return ONLY JSON without any markdown code fences.`;
 
-function getRandomItem<T>(arr: readonly T[], seedStr?: string): T {
-  if (!seedStr) {
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
+function getRandomItem<T>(arr: readonly T[], seedStr: string): T {
   let hash = 0;
   for (let i = 0; i < seedStr.length; i++) {
     hash = (hash << 5) - hash + seedStr.charCodeAt(i);
@@ -195,8 +193,8 @@ export function loadPromptTemplate(templateName: string): string {
     if (fs.existsSync(filePath)) {
       return fs.readFileSync(filePath, 'utf-8');
     }
-  } catch {
-    // Filesystem lookup failed in serverless, use fallback
+  } catch (error) {
+    console.warn(`Prompt template lookup failed for ${templateName}; using compact fallback:`, (error as Error).message);
   }
 
   if (templateName === 'regenerate-task.md') {
@@ -217,7 +215,7 @@ export function compileGeneratePrompt(
     : getRandomItem(SAMPLE_INDUSTRIES, seed + '-ind');
   const taskCount = resolveTaskCount(req, industry);
   const companyName = getRandomItem(SAMPLE_COMPANIES, seed + '-comp');
-  const theme = getRandomItem(SAMPLE_THEMES, seed + '-theme');
+  const theme = resolveGenerationTheme(req, seed);
   const period = getRandomItem(SAMPLE_PERIODS, seed + '-per');
   const roleProfile = ROLE_PROFILES[req.role];
   const roleOption = ADMIN_ROLES.find((item) => item.id === req.role);
@@ -244,6 +242,7 @@ export function compileGeneratePrompt(
       : 'Pakai @ untuk referensi baris aktif seperti [@[Qty Masuk]]',
     '{{companyName}}': companyName,
     '{{theme}}': theme,
+    '{{recentThemes}}': JSON.stringify(req.recentThemes ?? []),
     '{{period}}': period,
     '{{taskCount}}': String(taskCount || 5),
     '{{hintMaxChars}}': String(GENERATION_CONFIG[req.level].hintMaxChars),
@@ -263,6 +262,19 @@ export function compileGeneratePrompt(
   }
 
   return compiled;
+}
+
+export function resolveGenerationTheme(req: GenerateRequest, seed: string): string {
+  const themes = ROLE_GENERATION_THEMES[req.role] ?? SAMPLE_THEMES;
+  const recentThemes = new Set(
+    (req.recentThemes ?? []).map((theme) =>
+      theme.toLocaleLowerCase('id').replace(/\s+/g, ' ').trim(),
+    ),
+  );
+  const unusedThemes = themes.filter((theme) =>
+    !recentThemes.has(theme.toLocaleLowerCase('id').replace(/\s+/g, ' ').trim()),
+  );
+  return getRandomItem(unusedThemes.length > 0 ? unusedThemes : themes, `${seed}-theme`);
 }
 
 export function compileAnswerKeyPrompt(caseStudy: CaseStudy): string {

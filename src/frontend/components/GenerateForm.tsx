@@ -68,7 +68,7 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({
     setStructuredReferenceAt(initialStructuredReferenceAt);
     setIndustry(initialIndustry);
     setTaskCount(normalizeTaskCount(initialLevel ?? 'easy', initialTaskCount));
-    setTaskCountMode('manual');
+    setTaskCountMode(initialTaskCountMode ?? 'manual');
   }, [initialExcelVersion, initialFormulaStyle, initialIndustry, initialLevel, initialRole, initialStructuredReferenceAt, initialTaskCount, initialTaskCountMode]);
 
   useEffect(() => {

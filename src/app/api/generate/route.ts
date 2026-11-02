@@ -12,7 +12,9 @@ import {
 } from '@/shared/generation-config';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 export const maxDuration = 60;
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store, max-age=0' };
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
           code: 'RATE_LIMITED',
           retryAfterSeconds: cooldownCheck.retryAfterSec ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
         },
-        { status: 429 },
+        { status: 429, headers: NO_STORE_HEADERS },
       );
     }
 
@@ -37,7 +39,7 @@ export async function POST(req: NextRequest) {
           code: 'RATE_LIMITED',
           retryAfterSeconds: rateCheck.retryAfterSec ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
         },
-        { status: 429 }
+        { status: 429, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -47,11 +49,19 @@ export async function POST(req: NextRequest) {
     if (!parseResult.success) {
       return NextResponse.json(
         { error: 'Input form tidak valid: ' + parseResult.error.issues.map((i) => i.message).join(', ') },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
     const request = parseResult.data;
+    const clientRequestId = req.headers.get('x-client-request-id')?.slice(0, 80);
+    console.log('[api/generate] accepted', JSON.stringify({
+      clientRequestId,
+      role: request.role,
+      industry: request.industry ?? 'Acak',
+      level: request.level,
+      recentThemeCount: request.recentThemes?.length ?? 0,
+    }));
     const taskCountConfig = GENERATION_CONFIG[request.level];
     if (
       request.taskCountMode === 'manual' &&
@@ -61,12 +71,15 @@ export async function POST(req: NextRequest) {
         {
           error: `Jumlah tugas untuk level ${request.level} harus ${taskCountConfig.taskCountOptions.join(' atau ')}.`,
         },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
-    const caseStudy = await generateCaseStudyService(request);
-    return NextResponse.json({ success: true, caseStudy });
+    const caseStudy = await generateCaseStudyService(request, clientRequestId);
+    return NextResponse.json(
+      { success: true, caseStudy },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (error) {
     console.error('API /api/generate error:', error);
     if (error instanceof GroqApiError && error.status === 429) {
@@ -76,10 +89,10 @@ export async function POST(req: NextRequest) {
           code: 'RATE_LIMITED',
           retryAfterSeconds: error.retryAfterSeconds ?? GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
         },
-        { status: 429 },
+        { status: 429, headers: NO_STORE_HEADERS },
       );
     }
     const message = (error as Error).message || 'Terjadi kesalahan internal server saat generate soal.';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }

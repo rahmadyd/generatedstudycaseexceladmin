@@ -33,7 +33,7 @@ function getExcelColumnName(index: number): string {
 
 function sanitizeDatasetRange(
   range: unknown,
-  columnType: string,
+  columnType: string | undefined,
 ): [number, number] | [string, string] | undefined {
   if (!Array.isArray(range) || range.length !== 2) return undefined;
 
@@ -420,11 +420,24 @@ export function getTaskAnswerAlignmentIssues(
             'barang',
             'produk',
             'status',
+            'stok',
+            'awal',
+            'akhir',
+            'masuk',
+            'keluar',
+            'persediaan',
+            'saldo',
+            'tanggal',
+            'qty',
+            'harga',
+            'biaya',
+            'nominal',
+            'nilai',
           ]);
           return column.normalizedName
             .split(' ')
             .filter((part) => part.length >= 3 && !genericTerms.has(part))
-            .some((part) => taskText.includes(part));
+            .some((part) => containsWholeValue(normalizedTaskText, part));
         });
 
       for (const column of mentionedDatasetColumns) {
@@ -457,58 +470,23 @@ function preSanitizeRawJson(raw: any): any {
   // 1. Sanitize dataset
   if (raw.dataset && typeof raw.dataset === 'object') {
     if (typeof raw.dataset.rows === 'string') {
-      raw.dataset.rows = parseInt(raw.dataset.rows, 10) || 150;
-    }
-    if (!raw.dataset.sheetName) {
-      raw.dataset.sheetName = 'Data_Admin';
+      const parsedRows = Number(raw.dataset.rows);
+      if (Number.isSafeInteger(parsedRows)) raw.dataset.rows = parsedRows;
     }
     if (Array.isArray(raw.dataset.columns)) {
       raw.dataset.columns = raw.dataset.columns.map((c: any) => {
-        if (typeof c !== 'object' || c === null) return { name: 'Item', type: 'text' };
-        let colType = c.type ? String(c.type).toLowerCase() : 'text';
+        if (typeof c !== 'object' || c === null) return c;
+        let colType = c.type === undefined ? undefined : String(c.type).toLowerCase();
         if (colType === 'string') colType = 'text';
         if (colType === 'integer') colType = 'int';
-        if (!['date', 'text', 'number', 'int', 'currency', 'enum'].includes(colType)) {
-          colType = 'text';
-        }
         return {
-          name: c.name || 'Kolom',
+          ...c,
           type: colType,
-          values: colType === 'enum' ? sanitizeDatasetValues(c.values) : undefined,
+          values: colType === 'enum' ? sanitizeDatasetValues(c.values) : c.values,
           range: sanitizeDatasetRange(c.range, colType),
         };
       });
     }
-  }
-
-  // 2. Sanitize tasks
-  if (Array.isArray(raw.tasks)) {
-    raw.tasks = raw.tasks.map((t: any, idx: number) => ({
-      no: typeof t.no === 'number' ? t.no : idx + 1,
-      instruction: t.instruction || 'Selesaikan instruksi tugas',
-      hint: t.hint || '',
-      targetResult: t.targetResult || '',
-    }));
-  }
-
-  // 3. Sanitize formulas
-  if (!raw.formulas || typeof raw.formulas !== 'object') {
-    raw.formulas = { recommended: [], allowed: [], forbidden: [] };
-  } else {
-    raw.formulas.recommended = Array.isArray(raw.formulas.recommended) ? raw.formulas.recommended : [];
-    raw.formulas.allowed = Array.isArray(raw.formulas.allowed) ? raw.formulas.allowed : [];
-    raw.formulas.forbidden = Array.isArray(raw.formulas.forbidden) ? raw.formulas.forbidden : [];
-  }
-
-  // 4. Sanitize answerKey
-  if (!Array.isArray(raw.answerKey)) {
-    raw.answerKey = [];
-  } else {
-    raw.answerKey = raw.answerKey.map((a: any, idx: number) => ({
-      task: typeof a.task === 'number' ? a.task : idx + 1,
-      formula: a.formula || '=SUM(...)',
-      explanation: a.explanation || '',
-    }));
   }
 
   return raw;
@@ -518,6 +496,49 @@ function preSanitizeRawJson(raw: any): any {
  * Validates the raw JSON output from AI against Zod schema and business logic rules
  */
 export function validateAndSanitizeCaseStudy(rawJson: unknown, expectedExcelVersion?: string): ValidationResult {
+  if (typeof rawJson === 'object' && rawJson !== null && !Array.isArray(rawJson)) {
+    const raw = rawJson as Record<string, unknown>;
+    const missingFields = ['title', 'scenario', 'tasks', 'formulas', 'dataset', 'answerKey']
+      .filter((field) => !(field in raw));
+    if (missingFields.length > 0) {
+      return {
+        valid: false,
+        errors: [`Respons AI tidak lengkap; field wajib tidak ada: ${missingFields.join(', ')}`],
+      };
+    }
+    if (!Array.isArray(raw.tasks) || !Array.isArray(raw.answerKey)) {
+      return {
+        valid: false,
+        errors: ['Respons AI tidak valid; tasks dan answerKey harus berupa array.'],
+      };
+    }
+    if (typeof raw.formulas !== 'object' || raw.formulas === null || Array.isArray(raw.formulas)) {
+      return {
+        valid: false,
+        errors: ['Respons AI tidak valid; formulas harus berupa object.'],
+      };
+    }
+    const rawFormulas = raw.formulas as Record<string, unknown>;
+    if (!['recommended', 'allowed', 'forbidden'].every((field) => Array.isArray(rawFormulas[field]))) {
+      return {
+        valid: false,
+        errors: ['Respons AI tidak lengkap; formulas harus memiliki array recommended, allowed, dan forbidden.'],
+      };
+    }
+    if (
+      typeof raw.dataset !== 'object' ||
+      raw.dataset === null ||
+      typeof (raw.dataset as Record<string, unknown>).sheetName !== 'string' ||
+      typeof (raw.dataset as Record<string, unknown>).rows !== 'number' ||
+      !Array.isArray((raw.dataset as Record<string, unknown>).columns)
+    ) {
+      return {
+        valid: false,
+        errors: ['Respons AI tidak lengkap; dataset harus memiliki sheetName, rows, dan columns.'],
+      };
+    }
+  }
+
   const sanitized = preSanitizeRawJson(rawJson);
 
   const parseResult = CaseStudySchema.safeParse(sanitized);

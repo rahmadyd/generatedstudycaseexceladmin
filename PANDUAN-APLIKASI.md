@@ -59,13 +59,16 @@ Kasus yang berhasil dibuat tersimpan di riwayat browser. Pengguna dapat membuka 
 - Provider menggunakan environment variable server **`GROQ_API_KEY`**. API key tidak perlu dimasukkan di browser.
 - Pengaturan API key browser yang lama sudah dihapus; saat aplikasi dibuka, key lama yang tersimpan di `localStorage` dibersihkan.
 - Skenario, tugas, schema dataset, dan kunci jawaban dihasilkan oleh AI. Aplikasi tidak memakai bank kasus atau template lokal sebagai hasil generate pengganti. Jika AI tetap menghasilkan output yang tidak selaras setelah dua kali perbaikan, aplikasi menampilkan error dan tidak menyajikan kasus lokal.
-- Baris-baris dataset diisi secara deterministik di browser berdasarkan schema kolom dari AI; nilai baris tidak dibuat lewat panggilan AI.
+- Baris-baris dataset diisi secara deterministik di browser berdasarkan schema kolom dari AI dan seed kasus; setiap klik generate baru mendapat seed UUID unik, sedangkan seed yang dibagikan tetap menghasilkan dataset yang sama.
+- Tema kasus dipilih dari daftar yang sesuai dengan bidang admin dan dibandingkan dengan tema pada riwayat lokal terbaru untuk mengurangi pengulangan.
+- Endpoint generate POST memakai `force-dynamic`, `revalidate = 0`, dan cache browser `no-store`.
+- Respons AI diminta dalam JSON mode dan field wajib yang hilang ditolak, bukan diisi dengan tugas atau rumus placeholder. Error generate, parse JSON, dan batas kuota ditampilkan tanpa mempertahankan kasus lama sebagai hasil baru.
 - Model utama default adalah `openai/gpt-oss-120b`; model dapat dikonfigurasi melalui `GROQ_MODEL`.
 - `GROQ_FALLBACK_MODEL` dapat digunakan untuk menentukan model alternatif Groq. Sebaiknya berbeda dari model utama; jika tidak disetel, fallback dinonaktifkan.
 - Model dengan nama `gpt-oss` dikirim dengan `reasoning_effort: low`.
 - Jumlah tugas dibatasi per level untuk mengurangi ukuran respons: Easy 3–4, Middle 4–5, Advance 4–5.
 - OpenAI tidak digunakan sebagai provider atau fallback.
-- Jika model utama mengembalikan 429 dan `GROQ_FALLBACK_MODEL` berbeda, aplikasi mencoba model cadangan satu kali. Jika keduanya tetap 429, aplikasi tidak mengulang otomatis tanpa batas.
+- Jika model utama mengembalikan 429 atau 5xx dan `GROQ_FALLBACK_MODEL` berbeda, aplikasi mencoba model cadangan satu kali. Jika cadangan tetap gagal, error ditampilkan; aplikasi tidak mengulang fallback tanpa batas.
 - Jika Groq mengembalikan 429, aplikasi menampilkan error kuota. Aplikasi tidak mengganti hasil dengan bank kasus atau template lokal.
 - Untuk semua level, kegagalan generate ditampilkan di aplikasi. Jika kasus Advance berhasil dibuat tetapi tahap kunci gagal, kasus tetap tersedia dan kuncinya dapat dicoba ulang.
 - Jika JSON, schema, atau keselarasan rumus/role/industri gagal, prompt diperbaiki berdasarkan error dan dikirim ulang ke Groq maksimal dua kali. Jika tetap gagal, error ditampilkan dan tidak ada kasus lokal yang disajikan. Tombol juga memiliki guard klik ganda dan server membatasi permintaan beruntun per IP pada instance yang sama.

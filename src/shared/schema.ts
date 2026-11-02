@@ -146,6 +146,7 @@ export const AnswerKeyStatusEnum = z.enum(['pending', 'available']);
 export const CaseStudySchema = z.object({
   id: z.string().optional(),
   seed: z.string(),
+  generationTheme: z.string().optional(),
   createdAt: z.string().optional(),
   title: z.string().min(3),
   level: LevelEnum,
@@ -175,7 +176,7 @@ export const GenerateRequestSchema = z.object({
   industry: IndustryEnum.optional(),
   taskCountMode: TaskCountModeEnum.default('manual'),
   taskCount: z.number().min(2).max(25).default(5),
-  seed: z.string().optional(),
+  recentThemes: z.array(z.string().trim().min(1).max(160)).max(10).optional(),
 });
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 

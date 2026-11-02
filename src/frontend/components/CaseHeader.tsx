@@ -92,6 +92,12 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ caseStudy }) => {
               </span>
             )}
 
+            {caseStudy.generationTheme && (
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900">
+                Tema: {caseStudy.generationTheme}
+              </span>
+            )}
+
             {/* Excel version badge */}
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center space-x-1">
               <ShieldCheck className="w-3 h-3" />

@@ -3,6 +3,7 @@ You design practical Excel case studies for Indonesian administrative work. Retu
 PARAMETERS
 Level: {{level}} | Role: {{role}} ({{roleDetails}}) | Industry: {{industry}}
 Context: {{companyName}}; {{theme}}; {{period}}. Industry guidance: {{industryProfile}}
+Recently used themes: {{recentThemes}}. Do not repeat these themes; make the selected new angle visible in the scenario and tasks.
 Excel: {{excelVersion}} | Formula style: {{formulaStyle}} | Structured-reference rule: {{structuredReferenceAt}}
 Task count: exactly {{taskCount}} | Seed: {{seed}}
 Formula policy: {{levelFormulaPolicy}}
@@ -10,6 +11,7 @@ Keep each hint within {{hintMaxChars}} characters and each answer explanation wi
 
 RULES
 - Write in Indonesian and stay specific to the selected role and industry.
+- Return one syntactically valid JSON object only: no Markdown, comments, or prose outside JSON.
 - The title and every task must match the selected administrative role; do not generate a sales case for inventory, an HR case for finance, or otherwise switch roles. A generic word such as "barang", "data", "transaksi", or "operasional" alone does not establish role alignment.
 - Make both the selected admin role and industry's context visible in the dataset schema itself: include at least one field relevant to the role and at least one concrete product, service, or category from the supplied industry profile. The scenario alone is not enough.
 - Use the supplied industry profile's product/service/category examples for realistic enum values. Keep every task criterion consistent with the final dataset headers and enum values.

@@ -9,7 +9,7 @@ export interface AICompletionOptions {
   callNumber?: number;
   level?: string;
   providerCallNumber?: number;
-  allowRateLimitFallback?: boolean;
+  allowModelFallback?: boolean;
 }
 
 export class GroqApiError extends Error {
@@ -59,7 +59,15 @@ async function logGroqResponse(
   };
 
   if (response.ok) {
-    const completion = await response.clone().json().catch(() => null);
+    let completion: {
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+      choices?: Array<{ finish_reason?: string }>;
+    } | null = null;
+    try {
+      completion = await response.clone().json();
+    } catch (error) {
+      console.warn('Unable to parse Groq response metadata for logging:', (error as Error).message);
+    }
     console.log(JSON.stringify({
       ...baseLog,
       usage: {
@@ -77,7 +85,9 @@ async function logGroqResponse(
   try {
     const providerError = JSON.parse(errorBody)?.error;
     providerMessage = providerError?.message || errorBody;
-  } catch {}
+  } catch (error) {
+    console.warn('Groq error response was not JSON:', (error as Error).message);
+  }
 
   console.log(JSON.stringify({
     ...baseLog,
@@ -125,10 +135,7 @@ function getGroqPrimaryModel(): string {
 
 function getGroqFallbackModel(primaryModel?: string): string {
   const configured = process.env.GROQ_FALLBACK_MODEL?.trim();
-  if (configured && configured.length > 0) {
-    return configured;
-  }
-  return primaryModel || 'llama-3.3-70b-versatile';
+  return configured && configured.length > 0 ? configured : primaryModel || '';
 }
 
 export async function callChatAI(options: AICompletionOptions): Promise<string> {
@@ -180,11 +187,12 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
     body: buildBody(model),
   });
 
-  // Fallback only to a second model if explicitly configured and different.
+  // Only transient quota/provider failures should switch to the configured model.
   if (
-    response.status === 429 &&
-    options.allowRateLimitFallback !== false &&
+    (response.status === 429 || (response.status >= 500 && response.status < 600)) &&
+    options.allowModelFallback !== false &&
     model === defaultModel &&
+    fallbackModel.length > 0 &&
     fallbackModel !== defaultModel
   ) {
     await logGroqResponse(response, options, model, providerCallNumber);
@@ -210,19 +218,8 @@ export async function callChatAI(options: AICompletionOptions): Promise<string> 
       const providerError = JSON.parse(errorBody)?.error;
       parsedMsg = providerError?.message || errorBody;
       providerCode = providerError?.code || providerError?.type || '';
-    } catch {}
-
-    if (
-      response.status === 400 &&
-      options.jsonMode === true &&
-      /failed to generate json/i.test(parsedMsg)
-    ) {
-      return callChatAI({
-        ...options,
-        model: activeModel,
-        jsonMode: false,
-        providerCallNumber,
-      });
+    } catch (error) {
+      console.warn('Unable to parse Groq error payload:', (error as Error).message);
     }
 
     if (response.status === 429) {

@@ -153,7 +153,7 @@ function generateCellValue(col: DatasetColumn, rowIndex: number, caseStudy: Case
     return faker.helpers.arrayElement(['Jakarta', 'Bandung', 'Surabaya', 'Semarang', 'Medan', 'Makassar']);
   }
 
-  return `Item-${rowIndex + 1}`;
+  return faker.lorem.words(2);
 }
 
 /**

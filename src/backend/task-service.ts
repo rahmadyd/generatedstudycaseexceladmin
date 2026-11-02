@@ -13,6 +13,7 @@ import {
   compileGeneratePrompt,
   compileRegenerateTaskPrompt,
   resolveIndustry,
+  resolveGenerationTheme,
   resolveTaskCount,
 } from './prompts';
 import { callGroqChat } from './groq';
@@ -30,10 +31,6 @@ function cleanJsonString(str: string): string {
   else if (cleaned.startsWith('```')) cleaned = cleaned.substring(3);
   if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3);
   return cleaned.trim();
-}
-
-function generateRandomSeed(): string {
-  return Math.random().toString(36).substring(2, 10);
 }
 
 export class StagedContentGenerationError extends Error {
@@ -82,6 +79,7 @@ async function generateStagedAnswerKey(caseStudy: CaseStudy): Promise<CaseStudy>
         requestId,
         callNumber: attempt + 1,
         level: caseStudy.level,
+        jsonMode: true,
       });
       const parsed = parseAIJson(rawResponse, 'Gagal membaca kunci jawaban bertahap');
       const answerKeyResult = AnswerKeyItemSchema.array().safeParse(parsed.answerKey);
@@ -145,9 +143,13 @@ async function completeStagedContent(initialCase: CaseStudy): Promise<CaseStudy>
 }
 
 /** Generate a new case study */
-export async function generateCaseStudyService(req: GenerateRequest): Promise<CaseStudy> {
-  const seed = req.seed && req.seed.trim() !== '' ? req.seed.trim() : generateRandomSeed();
+export async function generateCaseStudyService(
+  req: GenerateRequest,
+  clientRequestId?: string,
+): Promise<CaseStudy> {
+  const seed = randomUUID().replace(/-/g, '');
   const industry = resolveIndustry(req.industry, seed);
+  const generationTheme = resolveGenerationTheme({ ...req, industry }, seed);
   const taskCount = resolveTaskCount(req, industry);
   const isStaged = req.level === 'advance';
   const prompt = compileGeneratePrompt(
@@ -156,6 +158,16 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
     isStaged ? { omitAnswerKey: true } : {},
   );
   const requestId = randomUUID();
+  console.log('[generate] started', JSON.stringify({
+    requestId,
+    clientRequestId,
+    seed,
+    role: req.role,
+    industry,
+    level: req.level,
+    generationTheme,
+    recentThemeCount: req.recentThemes?.length ?? 0,
+  }));
   let lastError: unknown;
   let retryGuidance = '';
 
@@ -165,7 +177,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
       const rawResponse = await callGroqChat({
         systemPrompt: 'Create a practical Excel case in Indonesian. Return compact JSON only in the requested schema.',
         userPrompt: `${prompt}${retryGuidance}`,
-        temperature: attempt === 0 ? 0.65 : 0.3,
+        temperature: 0.9,
         maxTokens: attempt > 0
           ? GENERATION_CONFIG[req.level].repairMaxTokens
           : isStaged
@@ -174,7 +186,8 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
         requestId,
         callNumber: attempt + 1,
         level: req.level,
-        allowRateLimitFallback: attempt === 0,
+        allowModelFallback: true,
+        jsonMode: true,
       });
 
       let parsed: unknown;
@@ -192,6 +205,7 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
       }
 
       (parsed as Record<string, unknown>).seed = seed;
+      (parsed as Record<string, unknown>).generationTheme = generationTheme;
       (parsed as Record<string, unknown>).level = req.level;
       (parsed as Record<string, unknown>).role = req.role;
       (parsed as Record<string, unknown>).excelVersion = req.excelVersion;
@@ -224,6 +238,14 @@ export async function generateCaseStudyService(req: GenerateRequest): Promise<Ca
           alignmentIssues.push(`jumlah tugas harus tepat ${taskCount}, tetapi AI menghasilkan ${validation.data.tasks.length}`);
         }
         if (alignmentIssues.length === 0) {
+          console.log('[generate] completed', JSON.stringify({
+            requestId,
+            clientRequestId,
+            seed: validation.data.seed,
+            generationTheme,
+            title: validation.data.title,
+            taskCount: validation.data.tasks.length,
+          }));
           return validation.data;
         }
         const columnLayout = validation.data.dataset.columns
@@ -247,6 +269,12 @@ Generate a new complete case strictly for role=${req.role} and industry=${indust
     } catch (err) {
       lastError = err;
       const msg = (err as Error).message || '';
+      console.warn('[generate] attempt failed', JSON.stringify({
+        requestId,
+        clientRequestId,
+        attempt: attempt + 1,
+        message: msg,
+      }));
       const malformedJson = err instanceof GroqOutputTruncatedError ||
         msg.includes('Gagal parse JSON dari AI') ||
         msg.includes('bukan object JSON');
@@ -309,6 +337,7 @@ export async function regenerateTaskService(req: RegenerateTaskRequest): Promise
     requestId: randomUUID(),
     callNumber: 1,
     level: caseStudy.level,
+    jsonMode: true,
   });
 
   const parsed = JSON.parse(cleanJsonString(rawResponse));

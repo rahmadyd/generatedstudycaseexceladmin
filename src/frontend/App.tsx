@@ -140,8 +140,18 @@ export default function App() {
   const handleGenerate = async (req: GenerateRequest) => {
     if (generateInFlightRef.current) return;
     generateInFlightRef.current = true;
+    const clientRequestId = globalThis.crypto.randomUUID();
     setIsLoading(true);
     setErrorMsg(null);
+    setCaseStudy(null);
+    setCompletedTasks([]);
+    setMissingContentError(null);
+    setMissingContentRetryAfterSeconds(0);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('seed');
+      window.history.replaceState({}, '', url.toString());
+    }
 
     // Save form settings
     const nextSettings: SavedSettings = {
@@ -158,16 +168,46 @@ export default function App() {
     setGeneratorSettings(nextSettings);
 
     try {
+      const recentThemes = getSavedCasesHistory()
+        .slice(0, 7)
+        .map((savedCase) => savedCase.generationTheme || savedCase.title);
+      const request = { ...req, recentThemes };
+      console.log('[generate] client request', {
+        clientRequestId,
+        role: request.role,
+        industry: request.industry,
+        level: request.level,
+        recentThemeCount: recentThemes.length,
+      });
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req),
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Request-Id': clientRequestId,
+        },
+        body: JSON.stringify(request),
       });
 
-      const data = await res.json();
+      const responseText = await res.text();
+      let data: {
+        success?: boolean;
+        caseStudy?: CaseStudy;
+        error?: string;
+        code?: string;
+        retryAfterSeconds?: number;
+      };
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(
+          `Respons server bukan JSON yang valid (HTTP ${res.status}). Coba lagi atau periksa log server.`,
+        );
+      }
 
       if (!res.ok) {
         if (data.code === 'RATE_LIMITED') {
+          setErrorMsg(data.error || 'Batas penggunaan AI tercapai. Tunggu sebelum mencoba lagi.');
           return {
             retryAfterSeconds:
               Number(data.retryAfterSeconds) || GENERATION_RETRY_COUNTDOWN_FALLBACK_SECONDS,
@@ -176,7 +216,18 @@ export default function App() {
         throw new Error(data.error || 'Gagal menghasilkan studi kasus.');
       }
 
-      const newCase: CaseStudy = data.caseStudy;
+      if (!data.success || !data.caseStudy) {
+        throw new Error('Server tidak mengembalikan studi kasus baru yang valid.');
+      }
+
+      const newCase = data.caseStudy;
+      console.log('[generate] client response', {
+        clientRequestId,
+        seed: newCase.seed,
+        generationTheme: newCase.generationTheme,
+        title: newCase.title,
+        taskCount: newCase.tasks.length,
+      });
       setCaseStudy(newCase);
       setMissingContentRetryAfterSeconds(0);
       setMissingContentError(
@@ -210,7 +261,7 @@ export default function App() {
       }
       return;
     } catch (err) {
-      console.error('Error generating case:', err);
+      console.error('[generate] client failed', { clientRequestId, error: err });
       setErrorMsg((err as Error).message || 'Terjadi kesalahan jaringan.');
     } finally {
       setIsLoading(false);
@@ -382,7 +433,7 @@ export default function App() {
         />
 
         {caseStudy ? (
-          <>
+          <div key={caseStudy.id ?? caseStudy.seed} className="space-y-8">
             <CaseHeader caseStudy={caseStudy} />
             <ScenarioSection caseStudy={caseStudy} />
             <DatasetSection caseStudy={caseStudy} datasetRows={datasetRows} />
@@ -400,7 +451,19 @@ export default function App() {
             />
             <FormulaClues formulas={caseStudy.formulas} />
             <PDFExportSection caseStudy={caseStudy} datasetRows={datasetRows} />
-          </>
+          </div>
+        ) : isLoading ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-2xl border border-emerald-200 bg-white p-8 text-center dark:border-emerald-900 dark:bg-gray-900"
+          >
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Sedang membuat studi kasus baru</h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              Menunggu hasil AI. Kasus lama tidak akan ditampilkan sebagai hasil generate baru.
+            </p>
+          </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-8 text-center">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Siap membuat studi kasus dengan AI</h2>

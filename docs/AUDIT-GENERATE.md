@@ -1,5 +1,16 @@
 # Audit Generate Groq
 
+## Perbaikan alur generate (2026-11)
+
+- Klik baru selalu membuat seed UUID server yang berbeda; seed tidak lagi dapat dipakai ulang dari payload generate. Dataset Faker tetap deterministik terhadap seed agar tautan kasus yang tersimpan bisa dibagikan.
+- Tema/angle dipilih dari daftar khusus role, dan hingga tujuh tema terakhir dari riwayat lokal dikirim untuk mencegah pengulangan.
+- Route generate menetapkan `force-dynamic`, `revalidate = 0`, dan `Cache-Control: no-store`; fetch browser memakai `cache: 'no-store'`.
+- Semua panggilan pembuatan kasus, kunci, dan regenerate meminta JSON mode. Field struktural yang wajib hilang ditolak; tugas/rumus dummy tidak dibuat untuk menutupi respons AI yang tidak lengkap.
+- Kasus lama dihapus dari tampilan ketika generate dimulai. Error HTTP 429, error provider, parse JSON, dan schema tampil di UI. Loading state dan key seed memaksa tampilan hasil baru di-mount ulang.
+- Fallback model yang dikonfigurasi dicoba hanya untuk HTTP 429 atau 5xx; error lain tidak mengganti model secara diam-diam. Jika fallback tidak dikonfigurasi, error asli ditampilkan.
+- Log `[generate]` di browser dan server berisi request ID, pilihan role/industri/level, jumlah tema terakhir, seed, tema terpilih, judul, dan jumlah tugas. Jangan memasukkan API key atau isi prompt ke log.
+- Batas `max_tokens` diturunkan: Easy 2.000, Middle 2.400, Advance 2.300; repair masing-masing 2.600/3.200/3.200; tahap kasus Advance 2.100 dan tahap kunci 900.
+
 ## Baseline kode sebelum optimasi (historis)
 
 - Sebelum fase 2, satu klik dapat menjalankan sampai tiga percobaan validasi; error 400 tertentu juga dapat menambah panggilan provider untuk retry format JSON.
@@ -41,8 +52,8 @@ Jangan menambahkan API key, header Authorization, atau isi prompt ke log.
 ## Resilience fase 2
 
 - Validasi/format dapat memicu maksimal satu repair, sehingga jalur satu-tahap (Easy/Middle) memiliki paling banyak dua percobaan generate utama.
-- Mode JSON provider dimatikan secara default; prompt tetap meminta JSON dan hasilnya tetap melewati Zod serta pemeriksaan bisnis. Ini menghindari error `Failed to generate JSON` dan panggilan retry tambahan.
-- Jika model utama mengembalikan 429, aplikasi mencoba satu kali dengan `GROQ_FALLBACK_MODEL` yang berbeda. Percobaan fallback tidak diulang pada repair.
+- Mode JSON dimatikan pada fase historis ini; pada perbaikan alur generate terbaru, JSON mode diaktifkan untuk semua panggilan pembuatan konten.
+- Fallback 429 saja adalah perilaku historis; perbaikan terbaru juga mencoba fallback yang dikonfigurasi untuk respons 5xx.
 - API mengembalikan `code: RATE_LIMITED` dan `retryAfterSeconds`; UI menampilkan countdown dan menonaktifkan tombol sementara.
 - Guard in-memory membatasi permintaan per klien ke satu setiap 5 detik pada instance yang sama. Vercel serverless dapat memakai instance berbeda, sehingga guard ini bukan limiter global.
 - Regenerate tugas memakai format error, countdown, guard, dan fallback 429 yang sama.

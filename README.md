@@ -56,7 +56,8 @@ Aplikasi ini didesain modular dengan **pemisahan tegas antara Frontend dan Backe
    - Model default `openai/gpt-oss-120b`; model utama dan cadangan dapat diatur melalui `GROQ_MODEL` dan `GROQ_FALLBACK_MODEL`.
    - Jumlah tugas dibatasi sesuai level agar respons lebih ringkas: Easy 3–4, Middle 4–5, Advance 4–5.
    - Generate Advance dipisah menjadi tahap kasus dan kunci jawaban. Jika tahap kunci gagal, kasus yang sudah berhasil dibuat tetap dapat digunakan dan kunci dapat dicoba ulang.
-   - Skenario, instruksi tugas, skema dataset, dan kunci jawaban dibuat oleh Groq. Jika respons tidak valid atau tidak selaras dengan role/industri/rumus, aplikasi mengirim ulang prompt koreksi ke AI maksimal dua kali; tidak mengganti kasus dengan template lokal. Jika kuota Groq habis, aplikasi menampilkan error 429.
+   - Skenario, instruksi tugas, skema dataset, dan kunci jawaban dibuat oleh Groq dalam JSON mode. Setiap klik generate mendapat seed baru; tema disesuaikan dengan role dan riwayat tema dari kasus tersimpan dikirim agar variasi tidak berulang. Jika respons tidak valid atau tidak selaras, aplikasi mencoba perbaikan maksimal dua kali tanpa mengganti hasil dengan template lokal. Error 429/5xx, JSON tidak valid, dan error lain ditampilkan di UI; model fallback yang dikonfigurasi hanya dicoba untuk 429/5xx.
+   - Request generate menggunakan `cache: no-store`; route POST bersifat dynamic dan mengirim header `Cache-Control: no-store`. Log sementara `[generate]` di browser dan server mencatat pilihan, tema, seed, serta judul hasil (tanpa API key atau isi prompt).
    - Log pemakaian Groq memuat timestamp UTC. Ekspor log JSONL dari Vercel dapat diringkas per tanggal/level dengan `npm run report:groq -- <path-log-jsonl>`; laporan memuat rata-rata token, kegagalan panggilan provider, dan jumlah 429 tanpa database tambahan.
 
 ---
